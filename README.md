@@ -2,9 +2,9 @@
 
 Full-stack real-time multiplayer chess platform built with FastAPI, React, TypeScript, WebSockets, and PostgreSQL.
 
-> **Status: Day 1 of 4 complete.** The foundation is in place: project structure, database schema and migrations,
-> authentication, a typed frontend API layer, and tests. Chess gameplay, matchmaking and WebSockets are
-> built next. See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md) for exactly what exists today.
+> **Status: Day 2 of 4 complete.** The backend is functional: chess rules, matchmaking, real-time WebSocket play,
+> server clocks, persistence, history and statistics. **There is no playable UI yet**; the frontend is built on Day 3.
+> See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md).
 
 ## Goals
 
@@ -17,7 +17,7 @@ before anything changes.
 | Layer | Technology |
 | --- | --- |
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, Framer Motion, Lucide, React Router |
-| Backend | Python, FastAPI, Pydantic v2, WebSockets (Day 2) |
+| Backend | Python, FastAPI, Pydantic v2, WebSockets, python-chess |
 | Database | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
 | Auth | JWT access tokens, Argon2id password hashing |
 | Testing | Pytest, Vitest, React Testing Library (Playwright planned for Day 4) |
@@ -26,7 +26,8 @@ before anything changes.
 ## Repository layout
 
 ```
-backend/    FastAPI app (api/ routes, services/ business logic, models/ ORM, schemas/ API types)
+backend/    FastAPI app (api/ routes, services/ business logic, realtime/ WebSockets,
+            chess_core/ rules and clock, models/ ORM, schemas/ API types)
   migrations/   Alembic migrations
   tests/        Pytest suite (runs against a real PostgreSQL database)
 frontend/   React + TypeScript app (lib/ API client, components/ UI, features/ feature modules)
@@ -81,6 +82,9 @@ Open the app at **`http://localhost:5173`** (not `127.0.0.1`): the backend's COR
 | `ENVIRONMENT` | backend | `development`, `test` or `production`. Production rejects placeholder secrets. |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | backend | Access token lifetime. Default 60. |
 | `CORS_ORIGINS` | backend | JSON list of allowed browser origins. Default `["http://localhost:5173"]`. |
+| `MATCHMAKING_STALE_SECONDS` | backend | Queue entry expiry without a status poll. Default 15. |
+| `GAME_START_TIMEOUT_SECONDS` | backend | Abort a paired game that never starts. Default 60. |
+| `WS_IDLE_TIMEOUT_SECONDS` | backend | Close silent sockets. Default 60. Other `WS_*` limits are in `app/core/config.py`. |
 | `VITE_API_BASE_URL` | frontend | Backend origin. Default `http://localhost:8000`. |
 
 Secrets live only in untracked files (`backend/.env`, `backend/.env.test`, `frontend/.env.local`). They are
@@ -97,21 +101,21 @@ alembic revision --autogenerate -m "msg"   # create a new migration after changi
 alembic check                              # fails if models and migrations have drifted
 ```
 
-Tables: `users`, `games`, `game_participants`, `moves`, `player_statistics`. Integrity rules (one player per
+Tables: `users`, `games`, `game_participants`, `moves`, `player_statistics`, `matchmaking_queue`. Integrity rules (one player per
 color per game, unique ply numbers, non-negative counters, valid enum values) are enforced by database
 constraints, not just application code. Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-## API (Day 1)
+## Backend features
 
-| Method | Path | Auth | Description |
-| --- | --- | --- | --- |
-| GET | `/health` | no | Liveness probe |
-| GET | `/health/ready` | no | Readiness probe (checks the database; 503 if unreachable) |
-| POST | `/api/v1/auth/register` | no | Create an account (201, or 409 if the username/email exists) |
-| POST | `/api/v1/auth/login` | no | Exchange email and password for a bearer token |
-| GET | `/api/v1/users/me` | yes | Current user's profile |
+- Server-validated chess: castling, en passant, promotion, check, checkmate, stalemate, insufficient material,
+  threefold repetition and the fifty-move rule.
+- Matchmaking for 3, 5 and 10 minute games, safe under concurrent requests.
+- Real-time play over authenticated WebSockets, with reconnection.
+- Server-authoritative clocks that keep running through disconnects and server restarts.
+- Resignation, draw offers, match history and win/loss/draw statistics.
 
-Interactive documentation is served at `/docs` while the backend runs.
+Reference: [REST API](docs/API.md) · [WebSocket protocol](docs/WEBSOCKET_PROTOCOL.md) ·
+[Architecture](docs/ARCHITECTURE.md). Run **one** API process (see the scaling note in the protocol doc).
 
 ## Testing
 
@@ -128,7 +132,5 @@ The backend suite refuses to run unless the database name ends in `_test`, so it
 
 ## Roadmap
 
-- **Day 2:** chess engine (python-chess), matchmaking, WebSocket protocol, server-authoritative clocks, game
-  persistence and statistics.
 - **Day 3:** landing page, auth screens, dashboard, interactive board, live multiplayer UI.
 - **Day 4:** end-to-end testing, Docker, CI, deployment, final documentation.

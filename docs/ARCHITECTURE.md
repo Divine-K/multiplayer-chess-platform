@@ -1,17 +1,19 @@
 # Architecture
 
-This document describes what is **implemented today (Day 1)** and the design the next days build toward.
+This document describes what is **implemented through Day 2** (the complete backend) and what remains.
 
 ## System overview
 
 ```
  Browser (React + TS)
    |  REST  /api/v1/...        JWT bearer token
-   |  WS    /ws/...  (Day 2)   authenticated socket
+   |  WS    /ws/games/{id}      authenticated socket
    v
  FastAPI app
    api/routes   thin HTTP layer: parse, call a service, map errors to status codes
-   services     business rules (registration, authentication; matchmaking and game logic on Day 2)
+   services     use cases and transactions: accounts, games, matchmaking, queries
+   realtime     WebSocket endpoint, protocol, connection rooms, command layer, timeout sweeper
+   chess_core   pure domain code: rules engine and clock (no database, no HTTP)
    models       SQLAlchemy ORM
    schemas      Pydantic request/response types
    core         settings, password hashing, JWT
@@ -23,8 +25,8 @@ This document describes what is **implemented today (Day 1)** and the design the
 ### Authority principle
 
 The server owns game state. Clients send intents ("move e2 to e4"); the server authenticates the user, checks
-they belong to the game and it is their turn, validates the move with a chess library, persists it, and only then
-broadcasts the result. The frontend never decides legality or results.
+they belong to the game and it is their turn, validates the move with python-chess, persists it, and only then
+broadcasts the result. The frontend never decides legality, time or results.
 
 ## Backend layering
 
@@ -36,6 +38,47 @@ broadcasts the result. The frontend never decides legality or results.
 | `core/security.py` | pure password and JWT helpers | touch the database |
 
 Services raise domain errors (`DuplicateAccountError`, `InvalidCredentialsError`); routes translate them into 409/401.
+
+## Gameplay design
+
+### Life of a move
+
+1. The socket handler validates the message shape (Pydantic) and knows the user from the authenticated connection.
+2. `GameCommands.move` takes the game's in-process lock, then runs the database work in a worker thread.
+3. `game_service.submit_move` locks the game row (`SELECT … FOR UPDATE`), checks participation and status, checks
+   the flag, checks the turn, rebuilds the position from the stored move list, and validates the move.
+4. The move, new clock values, any result and both players' statistics are committed in **one transaction**.
+5. The resulting snapshot is broadcast to both sockets while the in-process lock is still held, so events arrive in
+   commit order.
+
+Two locks, two jobs: the **row lock** protects data correctness (even against the REST API or the sweeper); the
+**asyncio lock** keeps broadcast order matching commit order.
+
+### Rules engine
+
+python-chess provides move generation and rule detection; `chess_core/engine.py` is a small wrapper with typed errors.
+The position is rebuilt by replaying all moves, because threefold repetition depends on history that a FEN does not
+carry. The cost is linear in game length, which is negligible for chess.
+
+Draw policy: threefold repetition and the fifty-move rule end the game automatically (no claim step). On flag fall,
+the game is a draw if the opponent has insufficient material to mate (as judged by python-chess).
+
+### Clocks
+
+The clock never ticks. A game stores each side's remaining milliseconds plus `turn_started_at`; live values are
+derived from the server's `now`. This is persistable (survives restarts), cannot be influenced by clients, and is
+deterministic to test. A move that arrives after the flag has fallen is discarded, even if it would mate.
+Network latency is charged to the player (no lag compensation).
+
+A background sweeper (every 250 ms) flags expired games and aborts games that never started, using only database state.
+
+### Matchmaking
+
+A FIFO queue table per time control. `join` and `cancel` take a transaction-scoped PostgreSQL advisory lock, so
+pairing is serialised: simultaneous joiners cannot both miss each other or claim the same opponent. Backstops in the
+schema: one queue entry per user (primary key), and one unfinished game per user (partial unique index on
+`game_participants(user_id) WHERE is_active`). Colors are random. Clients poll for status, which doubles as a
+heartbeat. A single global lock is deliberately simple; per-time-control locks are the next step if it ever contends.
 
 ## Authentication
 
@@ -54,10 +97,11 @@ Services raise domain errors (`DuplicateAccountError`, `InvalidCredentialsError`
 | Table | Purpose | Key constraints |
 | --- | --- | --- |
 | `users` | accounts | unique username and email; `is_active` |
-| `games` | one row per match; UUID id | status/result enums; `time_control_seconds > 0`; `finished` status requires `finished_at` |
-| `game_participants` | which user plays which color | unique `(game_id, color)` and `(game_id, user_id)`; FK cascade |
+| `games` | one row per match; UUID id; persisted clocks, `version`, pending draw offer | status/result/reason checks; non-negative clocks; `finished` status requires `finished_at` |
+| `game_participants` | which user plays which color; `is_active` | unique `(game_id, color)` and `(game_id, user_id)`; one active game per user; FK cascade |
 | `moves` | accepted moves in order | unique `(game_id, ply)`; stores UCI, SAN and resulting FEN |
 | `player_statistics` | per-user win/loss/draw counters | one row per user; `wins + losses + draws <= games_played` |
+| `matchmaking_queue` | players waiting for an opponent | one entry per user |
 
 Design notes:
 
@@ -65,7 +109,7 @@ Design notes:
   awkward to alter in migrations.
 - Constraints have deterministic names via a SQLAlchemy naming convention, so migrations are stable.
 - Every model change must ship with a migration; `tests/test_schema.py::test_models_match_migrations` fails otherwise.
-- Statistics are denormalised counters meant to be updated in the same transaction that finishes a game (Day 2).
+- Statistics are denormalised counters, updated with SQL-side increments in the same transaction that finishes a game.
 
 ## Frontend structure
 
@@ -80,7 +124,11 @@ handling.
 
 ## Planned (not yet implemented)
 
-- **Day 2:** python-chess validation, matchmaking queue, WebSocket protocol, server-authoritative clocks,
-  persistence of games/moves/statistics.
 - **Day 3:** routed UI, auth screens, dashboard, board, live game screen.
-- **Day 4:** Docker, CI, deployment, end-to-end tests, full API/WebSocket reference docs.
+- **Day 4:** Docker, CI, deployment, browser end-to-end tests, security and performance review, final docs.
+
+## Known constraints
+
+- Single API instance (connection rooms are in memory); see [WEBSOCKET_PROTOCOL.md](WEBSOCKET_PROTOCOL.md).
+- A token is checked when a socket connects, not again during that socket's lifetime.
+- No rate limiting on REST endpoints yet, and no cap on unauthenticated sockets beyond the 10 s auth timeout.

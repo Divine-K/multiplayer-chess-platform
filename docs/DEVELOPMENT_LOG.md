@@ -75,7 +75,104 @@ REST endpoints (profiles, games, history, statistics), transactional persistence
 
 ## Day 2
 
-Not started.
+- **Date:** 2026-11-25
+- **Objectives:** Chess engine, matchmaking, WebSockets, server clocks, REST APIs, persistence, backend tests.
+
+### Features implemented
+
+- **Engine:** authoritative wrapper over python-chess 1.11.2 (castling, en passant, promotion, check, checkmate,
+  stalemate, insufficient material, threefold repetition, fifty-move rule).
+- **Clocks:** persisted, server-derived, increment-capable; 250 ms sweeper for flag fall and never-started games.
+- **Persistence:** migration `0002_gameplay_and_matchmaking`; each command is one row-locked transaction covering
+  move, clocks, result and statistics.
+- **Matchmaking:** database FIFO queue, random colors, heartbeat expiry, cancel, advisory-lock concurrency control,
+  database-enforced one active game per player.
+- **WebSockets:** first-message JWT auth, origin check, participant authorization, typed protocol, size/rate/idle
+  limits, newest-connection-wins, disconnect notices, reconnection with full state, periodic clock sync.
+- **REST:** matchmaking, game state, active game, result, resign, history, own statistics, public profiles.
+- **Docs:** `docs/API.md`, `docs/WEBSOCKET_PROTOCOL.md`; architecture and README updated.
+
+### Architecture decisions
+
+| Decision | Reason |
+| --- | --- |
+| Clock stored as remaining time + turn start, never ticking | survives restarts, deterministic, client-proof |
+| Row lock for data, per-game asyncio lock around commit-then-broadcast | correctness and event ordering are separate problems |
+| Advisory lock for pairing, not `SKIP LOCKED` | with `SKIP LOCKED`, two simultaneous joiners can both find nobody |
+| Polling for matchmaking status | simple, and doubles as a liveness heartbeat |
+| Token in first socket message, not the URL | keeps tokens out of access logs |
+| Threefold and fifty-move draws are automatic | no extra claim protocol |
+| Game starts when both sockets connect; aborted after 60 s otherwise | nobody loses time before arriving, and no one stays stuck |
+| Games are created only by matchmaking | no way to force another user into a game |
+
+### Files created or modified
+
+New: `backend/app/chess_core/`, `backend/app/realtime/`, `backend/app/services/{game_service,game_queries,
+matchmaking_service,time_controls}.py`, `backend/app/api/routes/{games,matchmaking}.py`,
+`backend/app/schemas/{game,matchmaking}.py`, `backend/app/models/matchmaking.py`, `backend/app/core/time.py`,
+`backend/migrations/versions/0002_gameplay_and_matchmaking.py`, seven new test modules and two helper modules.
+Modified: models, errors, config, `main.py`, user routes, requirements, docs.
+
+### Tests executed
+
+| Suite | Result |
+| --- | --- |
+| Backend `pytest` (real PostgreSQL) | **182 passed** |
+| Ruff lint and format, mypy strict | clean |
+| `alembic check`, and 0002 downgrade/upgrade round trip | no drift, succeeds |
+| Frontend Vitest (unchanged since Day 1) | 13 passed |
+
+Per file: engine 35, WebSocket 43, REST gameplay 22, game service 22, auth 18, matchmaking 15, clock 8, schema 8,
+security 8, health 2, sweeper 1.
+
+The suite passed six consecutive times after the disconnect fix (181 tests at that point), before the sweeper test was
+added.
+
+**Mutation checks on concurrency tests:** with the matchmaking advisory lock removed, all 4 concurrent matchmaking
+tests failed. With the game row lock removed, the racing resign/timeout test failed. The duplicate-move test still
+passed without the row lock, so it does not reliably detect a missing lock (the unique `(game_id, ply)` constraint
+remains a backstop).
+
+**Live run against a real uvicorn server** (two independent network clients, 13 checks, all passed): match and start,
+castling sync, out-of-turn rejection, disconnect notice, reconnect with 7 moves, server restart mid-game with the
+clock still running, resignation, persisted history and statistics, and a **real 3-minute flag fall at 180.16 s** with
+35 periodic clock syncs received by white. The server log had no errors. This was a temporary script, not part of the
+repository, and covered 2 games.
+
+### Problems encountered
+
+- **Lost disconnect notice:** Starlette's test client cancels the server task right after disconnecting, which killed
+  the cleanup broadcast. Cleanup is now shielded from cancellation; also verified on a real server.
+- **Sweeper robustness:** found in review that one failing game would block the rest of a sweep pass. Fixed and tested.
+- Strict mypy could not type Pydantic's annotated-union `TypeAdapter` (one documented `type: ignore`).
+
+### Known limitations
+
+- Single API instance only (in-memory connection rooms).
+- No UI for gameplay yet. Two real **browser** sessions are verified on Day 3.
+- Socket tokens are not re-checked after connection; no REST rate limiting (Day 4 security review).
+- Draw offers can be repeated after a decline (bounded only by the message rate limit).
+- No rating system; matchmaking is first-come, first-served. No lag compensation.
+- The offered time controls have no increment, although the clock supports it.
+
+### GitHub commits (Day 2, in order)
+
+1. `feat: extend schema for gameplay and matchmaking`
+2. `feat: implement chess game engine`
+3. `feat: add server-authoritative chess clock`
+4. `feat: add transactional game service with persistence and statistics`
+5. `feat: implement multiplayer matchmaking`
+6. `feat: add WebSocket game synchronization and server-enforced timeouts`
+7. `feat: add REST APIs for matchmaking, games and player profiles`
+8. `test: add REST and WebSocket integration tests`
+9. `fix: isolate per-game failures in the timeout sweeper`
+10. `docs: document the API, WebSocket protocol and Day 2 progress`
+
+### Next steps: Day 3 objectives
+
+Visual design system, landing page, login and registration, dashboard with real data, interactive board, live game
+screen over the WebSocket protocol, match history, animations, frontend tests, and verification with two separate
+browser sessions.
 
 ## Day 3
 
