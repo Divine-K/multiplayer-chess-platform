@@ -7,6 +7,7 @@ when neither player is connected.
 import asyncio
 import logging
 import uuid
+from collections.abc import Awaitable
 from datetime import datetime, timedelta
 from functools import partial
 
@@ -69,9 +70,17 @@ class Sweeper:
     async def sweep(self) -> None:
         now = utc_now()
         for game_id in await run_db(lambda s: find_expired_games(s, now)):
-            await self._commands.expire(game_id)
+            await self._isolated(game_id, self._commands.expire(game_id))
         for game_id in await run_db(lambda s: find_unstarted_games(s, now, self._start_timeout)):
-            await self._commands.abort_unstarted(game_id, self._start_timeout)
+            await self._isolated(game_id, self._commands.abort_unstarted(game_id, self._start_timeout))
+
+    @staticmethod
+    async def _isolated(game_id: uuid.UUID, action: Awaitable[None]) -> None:
+        """One game that fails to process must not stop the others being swept."""
+        try:
+            await action
+        except Exception:
+            logger.exception("Sweeper could not process game %s", game_id)
 
     async def broadcast_clocks(self) -> None:
         """Periodically re-send authoritative clocks so client-side countdowns cannot drift."""
