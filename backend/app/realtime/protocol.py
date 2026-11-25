@@ -84,6 +84,4 @@ class SimpleMessage(_ClientMessage):
 
 ClientMessage = Annotated[AuthMessage | MoveMessage | SimpleMessage, Field(discriminator="type")]
 
-client_message_adapter: TypeAdapter[AuthMessage | MoveMessage | SimpleMessage] = TypeAdapter(
-    ClientMessage  # type: ignore[arg-type]  # mypy cannot express an Annotated union here
-)
+client_message_adapter: TypeAdapter[AuthMessage | MoveMessage | SimpleMessage] = TypeAdapter(ClientMessage)

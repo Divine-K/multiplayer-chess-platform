@@ -144,7 +144,9 @@ repository, and covered 2 games.
 - **Lost disconnect notice:** Starlette's test client cancels the server task right after disconnecting, which killed
   the cleanup broadcast. Cleanup is now shielded from cancellation; also verified on a real server.
 - **Sweeper robustness:** found in review that one failing game would block the rest of a sweep pass. Fixed and tested.
-- Strict mypy could not type Pydantic's annotated-union `TypeAdapter` (one documented `type: ignore`).
+- **Stale mypy cache:** a fresh-clone check showed that incremental mypy runs had reported success while a cold run
+  failed on an unneeded `type: ignore` in `realtime/protocol.py`. Removed it; type checks are now verified with
+  `mypy --no-incremental`.
 
 ### Known limitations
 
@@ -167,6 +169,7 @@ repository, and covered 2 games.
 8. `test: add REST and WebSocket integration tests`
 9. `fix: isolate per-game failures in the timeout sweeper`
 10. `docs: document the API, WebSocket protocol and Day 2 progress`
+11. `fix: remove unneeded type ignore surfaced by a cold mypy run`
 
 ### Next steps: Day 3 objectives
 
