@@ -1,0 +1,96 @@
+"""Background task for events no client request triggers: flag falls and abandoned games.
+
+It works purely from database state, so clocks still expire correctly after a server restart and
+when neither player is connected.
+"""
+
+import asyncio
+import logging
+import uuid
+from datetime import datetime, timedelta
+from functools import partial
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.chess_core.clock import ClockState
+from app.core.config import Settings
+from app.core.time import utc_now
+from app.models import Game, GameStatus, PlayerColor
+from app.realtime.commands import GameCommands, read_state, run_db
+from app.realtime.protocol import ServerEvent, server_message
+
+logger = logging.getLogger(__name__)
+
+
+def find_expired_games(session: Session, now: datetime) -> list[uuid.UUID]:
+    rows = session.execute(
+        select(
+            Game.id, Game.current_fen, Game.white_remaining_ms, Game.black_remaining_ms, Game.turn_started_at
+        ).where(Game.status == GameStatus.ACTIVE, Game.turn_started_at.is_not(None))
+    ).all()
+    expired = []
+    for row in rows:
+        side = PlayerColor.WHITE if row.current_fen.split()[1] == "w" else PlayerColor.BLACK
+        clock = ClockState(row.white_remaining_ms, row.black_remaining_ms, side, row.turn_started_at)
+        if clock.is_flagged(now):
+            expired.append(row.id)
+    return expired
+
+
+def find_unstarted_games(session: Session, now: datetime, start_timeout: timedelta) -> list[uuid.UUID]:
+    return list(
+        session.scalars(
+            select(Game.id).where(Game.status == GameStatus.WAITING, Game.created_at <= now - start_timeout)
+        )
+    )
+
+
+class Sweeper:
+    def __init__(self, commands: GameCommands, settings: Settings) -> None:
+        self._commands = commands
+        self._interval = settings.sweeper_interval_seconds
+        self._sync_interval = settings.clock_sync_interval_seconds
+        self._start_timeout = timedelta(seconds=settings.game_start_timeout_seconds)
+
+    async def run(self) -> None:
+        loop = asyncio.get_running_loop()
+        next_sync = loop.time() + self._sync_interval
+        while True:
+            await asyncio.sleep(self._interval)
+            try:
+                await self.sweep()
+                if loop.time() >= next_sync:
+                    next_sync = loop.time() + self._sync_interval
+                    await self.broadcast_clocks()
+            except Exception:
+                logger.exception("Sweeper pass failed; will retry")
+
+    async def sweep(self) -> None:
+        now = utc_now()
+        for game_id in await run_db(lambda s: find_expired_games(s, now)):
+            await self._commands.expire(game_id)
+        for game_id in await run_db(lambda s: find_unstarted_games(s, now, self._start_timeout)):
+            await self._commands.abort_unstarted(game_id, self._start_timeout)
+
+    async def broadcast_clocks(self) -> None:
+        """Periodically re-send authoritative clocks so client-side countdowns cannot drift."""
+        connections = self._commands.connections
+        for game_id in connections.active_rooms():
+            async with connections.game_lock(game_id):
+                snapshot = await run_db(partial(_clock_snapshot, game_id=game_id))
+                if snapshot is not None:
+                    await connections.broadcast(
+                        game_id, server_message(ServerEvent.CLOCK_UPDATED, game_id, snapshot)
+                    )
+
+
+def _clock_snapshot(session: Session, game_id: uuid.UUID) -> dict[str, object] | None:
+    state = read_state(session, game_id)
+    if state.status != GameStatus.ACTIVE:
+        return None
+    return {
+        "clocks": state.clocks.model_dump(mode="json"),
+        "version": state.version,
+        "server_time": state.server_time.isoformat(),
+    }

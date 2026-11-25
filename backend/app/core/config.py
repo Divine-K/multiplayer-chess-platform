@@ -26,6 +26,19 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
+    # Gameplay timing
+    matchmaking_stale_seconds: float = Field(default=15, gt=0)
+    game_start_timeout_seconds: float = Field(default=60, gt=0)
+    sweeper_interval_seconds: float = Field(default=0.25, gt=0)
+    clock_sync_interval_seconds: float = Field(default=5, gt=0)
+
+    # WebSocket limits
+    ws_auth_timeout_seconds: float = Field(default=10, gt=0)
+    ws_idle_timeout_seconds: float = Field(default=60, gt=0)
+    ws_send_timeout_seconds: float = Field(default=5, gt=0)
+    ws_max_message_bytes: int = Field(default=4096, ge=256)
+    ws_max_messages_per_second: int = Field(default=20, ge=1)
+
     @model_validator(mode="after")
     def _forbid_placeholder_secret_in_production(self) -> "Settings":
         if self.environment == "production" and "change-me" in self.jwt_secret_key.lower():
