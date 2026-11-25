@@ -42,7 +42,7 @@ from sqlalchemy.orm import Session
 from app.db.session import get_engine, get_session_factory
 from app.main import create_app
 
-TABLES = "player_statistics, moves, game_participants, games, users"
+TABLES = "matchmaking_queue, player_statistics, moves, game_participants, games, users"
 
 
 def alembic_config() -> Config:
