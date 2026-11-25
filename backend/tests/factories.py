@@ -17,9 +17,27 @@ T0 = datetime(2026, 1, 1, 12, 0, tzinfo=UTC)
 # 1.f3 e5 2.g4 Qh4#
 FOOLS_MATE = ["f2f3", "e7e5", "g2g4", "d8h4"]
 # Sam Loyd's ten-move stalemate, ending with 10.Qe6.
-FASTEST_STALEMATE = (
-    "e2e3 a7a5 d1h5 a8a6 h5a5 h7h5 a5c7 a6h6 h2h4 f7f6 c7d7 e8f7 d7b7 d8d3 b7b8 d3h7 b8c8 f7g6 c8e6"
-).split()
+FASTEST_STALEMATE = [
+    "e2e3",
+    "a7a5",
+    "d1h5",
+    "a8a6",
+    "h5a5",
+    "h7h5",
+    "a5c7",
+    "a6h6",
+    "h2h4",
+    "f7f6",
+    "c7d7",
+    "e8f7",
+    "d7b7",
+    "d8d3",
+    "b7b8",
+    "d3h7",
+    "b8c8",
+    "f7g6",
+    "c8e6",
+]
 
 
 def at(seconds: float) -> datetime:
@@ -35,7 +53,9 @@ def make_user(session: Session, username: str) -> User:
     return user
 
 
-def make_game(session: Session, white: User, black: User, *, seconds: int = 180, started: bool = True) -> uuid.UUID:
+def make_game(
+    session: Session, white: User, black: User, *, seconds: int = 180, started: bool = True
+) -> uuid.UUID:
     game = game_service.create_game(
         session, white_id=white.id, black_id=black.id, time_control_seconds=seconds, increment_seconds=0
     )

@@ -1,5 +1,6 @@
 from collections import Counter
 from datetime import datetime, timedelta
+from functools import partial
 
 import pytest
 from sqlalchemy import func, select
@@ -64,7 +65,11 @@ def test_longest_waiting_player_is_matched_first(db_session: Session) -> None:
     # Seed a second waiter directly: joining normally would pair the two immediately.
     db_session.add(
         MatchmakingEntry(
-            user_id=second.id, time_control_seconds=300, increment_seconds=0, joined_at=at(1), last_seen_at=at(1)
+            user_id=second.id,
+            time_control_seconds=300,
+            increment_seconds=0,
+            joined_at=at(1),
+            last_seen_at=at(1),
         )
     )
     db_session.commit()
@@ -142,7 +147,7 @@ def test_polling_keeps_a_queue_entry_alive(db_session: Session) -> None:
 @pytest.mark.parametrize("attempt", range(3))
 def test_simultaneous_joins_pair_everyone_exactly_once(db_session: Session, attempt: int) -> None:
     user_ids = [make_user(db_session, f"player{i}").id for i in range(20)]
-    results = run_concurrently([lambda s, uid=uid: join(s, uid) for uid in user_ids])
+    results = run_concurrently([partial(join, user_id=uid) for uid in user_ids])
 
     assert [r for r in results if isinstance(r, Exception)] == []
     assert Counter(r.status for r in results) == {"queued": 10, "matched": 10}
