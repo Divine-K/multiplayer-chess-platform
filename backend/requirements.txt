@@ -8,3 +8,4 @@ pydantic-settings>=2.6,<3.0
 email-validator>=2.2,<3.0
 pyjwt>=2.9,<3.0
 pwdlib[argon2]>=0.2,<1.0
+chess>=1.11,<2.0
