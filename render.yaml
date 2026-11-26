@@ -1,0 +1,22 @@
+# Render Blueprint for the API. The database is on Neon and the web app on Cloudflare Pages;
+# see docs/DEPLOYMENT.md. Values marked `sync: false` are typed into Render, never committed.
+services:
+  - type: web
+    name: multiplayer-chess-api
+    runtime: docker
+    plan: free
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health # does not touch the database, so an idle database can sleep
+    autoDeployTrigger: checksPass
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: CORS_ORIGINS
+        sync: false # JSON list, e.g. ["https://your-site.pages.dev"]
+      - key: TRUSTED_PROXY_HOPS
+        value: "1"
