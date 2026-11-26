@@ -29,3 +29,4 @@ frontend/coverage/
 frontend/test-results/
 frontend/playwright-report/
 frontend/.vitest/
+backend/tests_live/match-report.json
