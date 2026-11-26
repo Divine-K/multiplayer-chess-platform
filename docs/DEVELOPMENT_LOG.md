@@ -179,7 +179,112 @@ browser sessions.
 
 ## Day 3
 
-Not started.
+- **Date:** 2026-11-26
+- **Objectives:** Visual design system, landing page, authentication screens, dashboard, interactive board, live
+  multiplayer over WebSockets, match history, animation, frontend tests, and verification with two browser sessions.
+
+### Features implemented
+
+- **Design system:** dark theme with one brass accent, Inter and Fraunces (self-hosted), shared UI primitives, toasts,
+  skeletons and accessible dialogs. The interface is branded "Tempo". Animations respect reduced-motion settings.
+- **Pages:** landing (hero, features, how it works, footer), sign-in, sign-up, dashboard, match history, live game,
+  not-found.
+- **Sessions:** route guards that return you to the page you wanted, expired-token handling, retry when the server is
+  unreachable, and sign-in changes followed across tabs.
+- **Matchmaking:** time control choice, search animation, cancel, resume after reload, a search that survives
+  navigation, and leaving the queue on sign-out.
+- **Board:** own component with original SVG pieces; click, drag and keyboard input; highlighting for selection, legal
+  moves, last move, check and pending moves; promotion picker.
+- **Game screen:** player bars with colour, clock, captured pieces and material lead, opponent presence and record,
+  move list, draw offers, resignation confirmation, result dialog, reconnect and "opened elsewhere" states.
+
+The backend was not changed.
+
+### Files created or modified
+
+New: `frontend/src/features/{auth,dashboard,game,history,landing,matchmaking}/`, `features/NotFoundPage.tsx`,
+`components/layout/`, new `components/ui/` primitives, `lib/{brand,format,useAsync}.ts`, `lib/api/{games,types}.ts`,
+`src/test/` helpers, `frontend/e2e/`, `frontend/playwright.config.ts`. Modified: `App.tsx`, `main.tsx`, `index.css`,
+`index.html`, favicon, API client, token storage, Vite and TypeScript config, `.gitignore`, docs. Removed the Day 1
+backend-status panel and its tests.
+
+### Tests executed
+
+| Suite | Result |
+| --- | --- |
+| Frontend Vitest (`npm test`), 5 consecutive runs at 113 tests, then final run | **115 passed** |
+| Frontend `tsc -b --force`, oxlint, production build | clean, succeeds |
+| Playwright against the real API and PostgreSQL (`--repeat-each=3`) | **18 of 18 passed** (6 scenarios, 3 runs) |
+| Backend `pytest` (unchanged) | **182 passed** |
+| Backend ruff, `mypy --no-incremental` | clean |
+
+Vitest per file: game screen 19, socket 18, board 17, auth and landing 15, matchmaking 10, formatting 9, API client 9,
+reducer 6, history 5, board helpers 5, config 2.
+
+### Integration results (two isolated browser sessions in Google Chrome)
+
+Covered by `frontend/e2e/`:
+
+| Requirement | Observed |
+| --- | --- |
+| Both players join the same game and see the same board | same game URL, identical 32-piece position |
+| A valid move updates both | yes, including a drag-and-drop move, captures and a promotion |
+| An illegal move is rejected | a move rewritten in transit to `e2e5` was refused by the server; neither board changed |
+| Turns switch | yes; the player not on turn cannot select a piece |
+| Clocks are consistent | both sessions agreed within 1 s |
+| Completion reaches both | checkmate, resignation and agreed draw; history and statistics updated |
+| Refresh and reconnect | position and moves restored; the opponent saw the disconnect and the return |
+| Second tab for one player | newest connection wins; the older one can take it back |
+| Layout | no sideways scrolling at 320, 375, 768 and 1366 px; board square and on screen, clocks visible |
+
+**Run once with a temporary script (not in the repository):** the API process was stopped mid-game and restarted
+about 6 s later. Both sessions reconnected without a reload with the position intact, black's clock had kept running
+(2:53 of 3:00), and play continued. White then let the clock expire: after **180.2 s** both screens showed the result
+"on time" and white's clock read 0:00.0, with no page errors.
+
+The screens were also reviewed from screenshots at desktop, tablet and phone sizes. All throwaway accounts and their
+games were deleted from the development database afterwards.
+
+### Problems encountered
+
+- **Sideways scroll on phones** (23 px on the game screen), found in screenshot review: the grid had no column size
+  below the desktop breakpoint. Fixed, and now covered by a browser test.
+- **Stale "game in progress" banner:** found in code review. If that game ended or was cancelled while the dashboard
+  was open, Play stayed disabled until a reload. The dashboard now re-checks it; covered by a test.
+- **Captured black pieces** were nearly invisible on the dark background; given a light halo.
+- **Two test timing faults:** assertions ran before an exit animation and a redirect had finished.
+- **Preview tool:** it could not start the API on port 8000, so the API was run directly from the shell.
+
+### Known limitations
+
+- Only Google Chrome was tested. Firefox, Safari and real touch devices have not been.
+- Finished games show the final position only; you cannot step back through earlier moves.
+- There is no site-wide "online" indicator, because the backend tracks presence only inside a game.
+- A search left in a long-hidden tab can expire if the browser throttles its timers; the player is told.
+- Sign-in is shared by all tabs in one browser profile.
+- Displayed clocks can lag the server by the network delay; the server's clock decides.
+- The token is still kept in `localStorage` (Day 4 security review).
+- The JavaScript is one bundle (about 154 kB gzipped), not yet split by route (Day 4 performance review).
+
+### GitHub commits (Day 3, in order)
+
+1. `feat: add design system and UI primitives`
+2. `feat: build interactive chessboard`
+3. `feat: implement authentication screens`
+4. `feat: add player dashboard, matchmaking and match history`
+5. `feat: integrate real-time multiplayer gameplay`
+6. `feat: build landing page and connect the application`
+7. `test: add frontend integration tests`
+8. `test: add two-player browser tests`
+9. `docs: document the web app and Day 3 results`
+
+Commits 1 to 6 split one working tree by layer. Each commit up to 8 was checked with a cold type check; the full
+test and browser results above are for the final state.
+
+### Next steps: Day 4 objectives
+
+Full-system testing across many match scenarios, bug fixes, performance and security review, Docker and Compose,
+GitHub Actions, deployment, README with screenshots, and the remaining documentation.
 
 ## Day 4
 

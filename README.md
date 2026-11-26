@@ -2,9 +2,9 @@
 
 Full-stack real-time multiplayer chess platform built with FastAPI, React, TypeScript, WebSockets, and PostgreSQL.
 
-> **Status: Day 2 of 4 complete.** The backend is functional: chess rules, matchmaking, real-time WebSocket play,
-> server clocks, persistence, history and statistics. **There is no playable UI yet**; the frontend is built on Day 3.
-> See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md).
+> **Status: Day 3 of 4 complete.** The app is playable locally: two people can sign up, get matched and finish a game
+> from separate browser sessions. **It is not deployed yet.** Docker, CI, deployment and the final testing and
+> security pass are Day 4. See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md).
 
 ## Goals
 
@@ -20,7 +20,7 @@ before anything changes.
 | Backend | Python, FastAPI, Pydantic v2, WebSockets, python-chess |
 | Database | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
 | Auth | JWT access tokens, Argon2id password hashing |
-| Testing | Pytest, Vitest, React Testing Library (Playwright planned for Day 4) |
+| Testing | Pytest, Vitest, React Testing Library, Playwright |
 | Tooling | Ruff, mypy (strict), oxlint, Git/GitHub (Docker and CI planned for Day 4) |
 
 ## Repository layout
@@ -31,6 +31,7 @@ backend/    FastAPI app (api/ routes, services/ business logic, realtime/ WebSoc
   migrations/   Alembic migrations
   tests/        Pytest suite (runs against a real PostgreSQL database)
 frontend/   React + TypeScript app (lib/ API client, components/ UI, features/ feature modules)
+  e2e/          Playwright browser tests
 docs/       Architecture notes and the development log
 ```
 
@@ -117,6 +118,25 @@ constraints, not just application code. Details in [docs/ARCHITECTURE.md](docs/A
 Reference: [REST API](docs/API.md) · [WebSocket protocol](docs/WEBSOCKET_PROTOCOL.md) ·
 [Architecture](docs/ARCHITECTURE.md). Run **one** API process (see the scaling note in the protocol doc).
 
+## Using the app
+
+The interface is branded **Tempo**.
+
+- **Landing, sign-up and sign-in** with field validation, loading states and server error messages.
+- **Dashboard:** quick matchmaking (3+0, 5+0, 10+0), your win/draw/loss record, recent matches, and a link back to
+  any unfinished game. A search keeps running while you browse other pages.
+- **Board:** click or drag to move, keyboard play with arrow keys, legal-move, selection, last-move and check
+  highlighting, a promotion picker and captured pieces.
+- **Game screen:** both players, their colours and clocks, opponent connection status and record, move list, draw
+  offers, resignation and a result screen.
+- **Match history:** paginated; open a game to see its final position and move list.
+
+To play against yourself, use two *separate* sessions, for example a normal window and a private window. Two tabs in
+the same window share one sign-in.
+
+The browser holds no chess rules. It highlights the moves the server lists, sends the one you choose, and changes the
+board only when the server sends the new position.
+
 ## Testing
 
 ```bash
@@ -126,11 +146,16 @@ ruff check . && ruff format --check . && mypy app tests
 
 # Frontend
 cd frontend && npm test && npm run lint && npm run typecheck && npm run build
+
+# Browser tests: needs Google Chrome, and the API (:8000) and `npm run dev` already running
+cd frontend && npm run test:e2e
 ```
+
+The browser tests drive the installed Google Chrome with one isolated session per player. They create throwaway
+accounts (`…@e2e-players.dev`) in whichever database the API uses, so point it at a development database.
 
 The backend suite refuses to run unless the database name ends in `_test`, so it can never wipe development data.
 
 ## Roadmap
 
-- **Day 3:** landing page, auth screens, dashboard, interactive board, live multiplayer UI.
 - **Day 4:** end-to-end testing, Docker, CI, deployment, final documentation.

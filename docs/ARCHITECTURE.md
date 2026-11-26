@@ -1,6 +1,6 @@
 # Architecture
 
-This document describes what is **implemented through Day 2** (the complete backend) and what remains.
+This document describes what is **implemented through Day 3** (backend and web app) and what remains.
 
 ## System overview
 
@@ -111,21 +111,52 @@ Design notes:
 - Every model change must ship with a migration; `tests/test_schema.py::test_models_match_migrations` fails otherwise.
 - Statistics are denormalised counters, updated with SQL-side increments in the same transaction that finishes a game.
 
-## Frontend structure
+## Frontend
 
 ```
-src/lib/        config, token storage, API client (ApiError, bearer token, FastAPI error parsing)
-src/components/ui/   reusable primitives (Button, Spinner)
-src/features/        feature modules (status panel today; auth, dashboard, game from Day 3)
+src/lib/             API client and types, config, token storage, formatting, useAsync
+src/components/      ui/ primitives (button, field, modal, toast, skeleton), layout/ shell and logo
+src/features/
+  auth/              session provider, route guards, sign-in and sign-up
+  matchmaking/       search state and polling, shared by every signed-in page
+  dashboard/         quick match, record, recent matches
+  history/           paginated match history
+  game/              board/ (rendering and input), session/ (socket, reducer, hook), game screen
+  landing/           public page
+src/test/            fake API, fake WebSocket and fixtures
+e2e/                 Playwright tests against the real stack
 ```
 
-All network access goes through `lib/api/client.ts`, which centralises auth headers, error shape and network-failure
-handling.
+All HTTP access goes through `lib/api/client.ts`, which centralises auth headers, error shape, network-failure
+handling and the reaction to an expired token.
 
-## Planned (not yet implemented)
+### Live game data flow
 
-- **Day 3:** routed UI, auth screens, dashboard, board, live game screen.
-- **Day 4:** Docker, CI, deployment, browser end-to-end tests, security and performance review, final docs.
+```
+GameSocket  ->  sessionReducer  ->  GamePage / Board
+(transport)     (latest snapshot)    (render, collect input)
+     ^________________ move / resign / draw intents ___|
+```
+
+- **`GameSocket`** is plain TypeScript: first-message auth, heartbeat, dead-link detection, reconnection with
+  backoff, and the close codes after which it must not retry.
+- **`sessionReducer`** is a pure function. It replaces the whole game with each server snapshot and ignores any with
+  an older `version`, so there is no client-side game state to drift.
+- **No optimistic moves.** A sent move is marked as pending; pieces move only when the server answers. A lost
+  connection clears the mark, and the snapshot received on reconnect says whether the move landed.
+- **No chess rules.** `features/game/chess.ts` only reads piece placement from the FEN and filters the server's
+  `legal_moves`.
+- **Clocks** are animated locally from the time each snapshot arrived and re-based on every server message. They are
+  never used to decide anything, and may lag the server by the network delay.
+
+### Decisions
+
+| Decision | Reason |
+| --- | --- |
+| Own board component and original SVG pieces, no board library | the server already supplies legal moves; this keeps input, accessibility and tests under our control |
+| Matchmaking state above the routes | each status poll is the queue heartbeat, so changing page must not stop it |
+| Context and a reducer, no state library | the shared state is small: session, search, and one game |
+| Playwright with one browser context per player | separate storage, like two people on two machines |
 
 ## Known constraints
 
