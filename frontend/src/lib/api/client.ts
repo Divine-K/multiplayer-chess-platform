@@ -12,6 +12,17 @@ export class ApiError extends Error {
   }
 }
 
+type UnauthorizedListener = () => void
+let unauthorizedListener: UnauthorizedListener | null = null
+
+/** Lets the auth layer end the session when the server rejects a stored token. */
+export function onUnauthorized(listener: UnauthorizedListener): () => void {
+  unauthorizedListener = listener
+  return () => {
+    if (unauthorizedListener === listener) unauthorizedListener = null
+  }
+}
+
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'
   body?: unknown
@@ -37,10 +48,11 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const { method = 'GET', body, authenticated = true, signal } = options
 
   const headers: Record<string, string> = { Accept: 'application/json' }
+  let sentToken: string | null = null
   if (body !== undefined) headers['Content-Type'] = 'application/json'
   if (authenticated) {
-    const token = tokenStorage.get()
-    if (token) headers.Authorization = `Bearer ${token}`
+    sentToken = tokenStorage.get()
+    if (sentToken) headers.Authorization = `Bearer ${sentToken}`
   }
 
   let response: Response
@@ -59,6 +71,10 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   const payload: unknown = response.status === 204 ? null : await response.json().catch(() => null)
 
   if (!response.ok) {
+    // Ignore late 401s for a token that has since been replaced by a new sign-in.
+    if (response.status === 401 && sentToken !== null && sentToken === tokenStorage.get()) {
+      unauthorizedListener?.()
+    }
     throw new ApiError(response.status, extractErrorMessage(payload, `Request failed (${response.status}).`))
   }
   return payload as T

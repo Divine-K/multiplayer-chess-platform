@@ -5,7 +5,7 @@
  * Tokens are short-lived (see ACCESS_TOKEN_EXPIRE_MINUTES) and the app renders no untrusted HTML.
  */
 
-const TOKEN_KEY = 'chess.accessToken'
+export const TOKEN_KEY = 'chess.accessToken'
 
 export const tokenStorage = {
   get(): string | null {
