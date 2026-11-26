@@ -26,3 +26,6 @@ frontend/coverage/
 .idea/
 .vscode/
 *.swp
+frontend/test-results/
+frontend/playwright-report/
+frontend/.vitest/
