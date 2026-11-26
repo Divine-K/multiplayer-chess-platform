@@ -182,11 +182,16 @@ class Player:
         return str(message["payload"]["code"])
 
     async def close_code(self, timeout: float = 10) -> int:
+        """The close code, after checking that the same reason was announced beforehand."""
+        announced = None
         try:
             while True:
-                await self.receive(timeout)
+                message = await self.receive(timeout)
+                if message["type"] == "closing":
+                    announced = message["payload"]["code"]
         except ConnectionClosed as closed:
             assert closed.rcvd is not None
+            assert announced == closed.rcvd.code, (announced, closed.rcvd.code)
             return closed.rcvd.code
 
     async def move(self, uci: str) -> None:

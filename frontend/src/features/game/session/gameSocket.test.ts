@@ -67,6 +67,28 @@ describe('GameSocket', () => {
     expect(FakeSocket.latest().typesSent()).toContain('ping')
   })
 
+  it('acts on an announced close at once, without waiting for the close frame', () => {
+    connect()
+    authenticate()
+    const socket = FakeSocket.latest()
+    socket.emit('closing', { code: 4409 })
+    expect(statuses.at(-1)).toEqual(['closed', 'replaced'])
+    expect(socket.closedWith).toBe(1000)
+    vi.advanceTimersByTime(60_000)
+    expect(FakeSocket.instances).toHaveLength(1)
+  })
+
+  it('reconnects only once after an announced non-fatal close', () => {
+    connect()
+    authenticate()
+    const socket = FakeSocket.latest()
+    socket.emit('closing', { code: 4410 })
+    expect(statuses.at(-1)).toEqual(['reconnecting'])
+    socket.drop(1006) // the close frame or its absence arriving later changes nothing
+    vi.advanceTimersByTime(500)
+    expect(FakeSocket.instances).toHaveLength(2)
+  })
+
   it('reconnects with growing delays and resets them after success', () => {
     connect()
     authenticate()

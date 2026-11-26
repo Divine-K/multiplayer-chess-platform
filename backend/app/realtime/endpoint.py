@@ -30,6 +30,7 @@ from app.realtime.protocol import (
     ServerEvent,
     SimpleMessage,
     client_message_adapter,
+    closing_message,
     server_message,
 )
 from app.schemas.game import GameState
@@ -48,6 +49,15 @@ class _Reject(Exception):
 
     def __init__(self, code: CloseCode) -> None:
         self.code = code
+
+
+async def _close_with_reason(
+    websocket: WebSocket, game_id: uuid.UUID, code: CloseCode, send_timeout: float
+) -> None:
+    with contextlib.suppress(Exception):
+        await asyncio.wait_for(websocket.send_json(closing_message(game_id, code)), send_timeout)
+    with contextlib.suppress(Exception):
+        await websocket.close(code=code)
 
 
 class _RateLimiter:
@@ -222,7 +232,7 @@ async def game_socket(websocket: WebSocket, game_id: uuid.UUID) -> None:
     await websocket.accept()
     app_state = websocket.app.state
     if app_state.unauthenticated_sockets >= settings.ws_max_unauthenticated:
-        await websocket.close(code=CloseCode.RATE_LIMITED)
+        await _close_with_reason(websocket, game_id, CloseCode.RATE_LIMITED, settings.ws_send_timeout_seconds)
         return
     connection: Connection | None = None
     color: PlayerColor | None = None
@@ -254,8 +264,7 @@ async def game_socket(websocket: WebSocket, game_id: uuid.UUID) -> None:
         await commands.start_if_ready(game_id, player_ids)
         await _message_loop(websocket, session, settings)
     except _Reject as rejection:
-        with contextlib.suppress(Exception):
-            await websocket.close(code=rejection.code)
+        await _close_with_reason(websocket, game_id, rejection.code, settings.ws_send_timeout_seconds)
     except (WebSocketDisconnect, RuntimeError):
         pass  # the client went away, or the socket was closed because a newer one replaced it
     finally:

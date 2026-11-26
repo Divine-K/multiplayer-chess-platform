@@ -110,6 +110,11 @@ export class GameSocket {
       return
     }
     this.lastMessageAt = Date.now()
+    if (message.type === 'closing') {
+      // Act on the announced reason now: a proxy may lose or delay the close frame that follows.
+      this.handleClose(message.payload.code)
+      return
+    }
     if (message.type === 'connected') {
       this.authenticated = true
       this.attempts = 0

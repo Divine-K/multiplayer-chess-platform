@@ -51,6 +51,7 @@ Unknown fields are rejected.
 | `game_finished` | `{status, result, result_reason, state}` | both |
 | `state` | `{state}` | you (reply to `sync`) |
 | `pong` | `{}` | you |
+| `closing` | `{code}` | you, immediately before the server closes your socket |
 | `error` | `{code, message}` | you |
 
 A move that ends the game produces `move_accepted` followed by `game_finished`. An opponent's move silently clears a
@@ -88,6 +89,11 @@ Clock values are the time remaining **at `server_time`**. A client may animate t
 but must resynchronise on every event. Clients never send times, and the server ignores any attempt to.
 
 ## Close codes
+
+Before closing a socket the server sends `closing` with the code it is about to use. **Act on that message** and close
+your side: on the hosted deployment the close frame itself did not arrive, and the browser saw only a reasonless
+`1006` about 20 seconds later. The same code is still sent in the close frame. (A disallowed origin is refused during
+the handshake, so it gets neither.)
 
 | code | meaning | client should |
 | --- | --- | --- |

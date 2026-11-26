@@ -24,6 +24,7 @@ class ServerEvent(enum.StrEnum):
     GAME_FINISHED = "game_finished"
     STATE = "state"
     PONG = "pong"
+    CLOSING = "closing"
     ERROR = "error"
 
 
@@ -43,6 +44,14 @@ class CloseCode(enum.IntEnum):
 
 def server_message(event: ServerEvent, game_id: uuid.UUID, payload: dict[str, Any]) -> dict[str, Any]:
     return {"type": event.value, "game_id": str(game_id), "payload": payload}
+
+
+def closing_message(game_id: uuid.UUID, code: CloseCode) -> dict[str, Any]:
+    """Sent just before the server closes a socket.
+
+    Some hosting proxies drop the close frame, leaving the client with only a late, reasonless 1006.
+    """
+    return server_message(ServerEvent.CLOSING, game_id, {"code": int(code)})
 
 
 class _Strict(BaseModel):

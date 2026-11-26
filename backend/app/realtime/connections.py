@@ -14,7 +14,7 @@ from typing import Any
 
 from fastapi import WebSocket
 
-from app.realtime.protocol import CloseCode
+from app.realtime.protocol import CloseCode, closing_message
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +60,7 @@ class ConnectionManager:
         previous = room.get(connection.user_id)
         room[connection.user_id] = connection
         if previous is not None:
+            await previous.send(closing_message(game_id, CloseCode.REPLACED))
             await previous.close(CloseCode.REPLACED)
 
     def unregister(self, game_id: uuid.UUID, connection: Connection) -> bool:

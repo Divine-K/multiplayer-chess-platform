@@ -29,6 +29,8 @@ def tuned_client(**settings: Any) -> Iterator[TestClient]:
 
 
 def expect_close(socket: Socket, code: int) -> None:
+    """The reason is announced as a message, then repeated as the close code."""
+    assert socket.expect("closing") == {"code": code}
     with pytest.raises(WebSocketDisconnect) as closed:
         socket.raw.receive_json()
     assert closed.value.code == code

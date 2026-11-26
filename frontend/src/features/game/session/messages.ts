@@ -14,4 +14,5 @@ export type ServerMessage =
   | Message<'turn_changed', { turn: PlayerColor; ply: number; version: number }>
   | Message<'clock_updated', { clocks: ClockInfo; version: number; server_time: string }>
   | Message<'pong', Record<string, never>>
+  | Message<'closing', { code: number }>
   | Message<'error', { code: string; message: string }>

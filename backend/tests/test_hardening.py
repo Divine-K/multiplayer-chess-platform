@@ -91,6 +91,7 @@ def test_waiting_unauthenticated_sockets_are_capped() -> None:
             client.websocket_connect(path) as second,
             pytest.raises(WebSocketDisconnect) as closed,
         ):
+            assert second.receive_json()["payload"] == {"code": 4429}
             second.receive_json()
         assert closed.value.code == 4429
 
