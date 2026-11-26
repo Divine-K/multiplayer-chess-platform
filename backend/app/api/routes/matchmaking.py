@@ -42,6 +42,8 @@ def join(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
     except (AlreadyQueuedError, AlreadyInGameError) as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    if state.status == "matched":
+        request.app.state.commands.games_pending.set()
     return MatchmakingResponse.model_validate(state, from_attributes=True)
 
 

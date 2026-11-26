@@ -36,6 +36,8 @@ class Settings(BaseSettings):
     game_start_timeout_seconds: float = Field(default=60, gt=0)
     sweeper_interval_seconds: float = Field(default=0.25, gt=0)
     clock_sync_interval_seconds: float = Field(default=5, gt=0)
+    # With no unfinished game, the sweeper leaves the database alone and only rechecks this often.
+    sweeper_idle_recheck_seconds: float = Field(default=900, gt=0)
 
     # WebSocket limits
     ws_auth_timeout_seconds: float = Field(default=10, gt=0)

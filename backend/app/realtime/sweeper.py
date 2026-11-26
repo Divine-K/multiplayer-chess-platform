@@ -47,25 +47,55 @@ def find_unstarted_games(session: Session, now: datetime, start_timeout: timedel
     )
 
 
+def has_unfinished_games(session: Session) -> bool:
+    unfinished = Game.status.in_((GameStatus.WAITING, GameStatus.ACTIVE))
+    return session.scalar(select(Game.id).where(unfinished).limit(1)) is not None
+
+
 class Sweeper:
     def __init__(self, commands: GameCommands, settings: Settings) -> None:
         self._commands = commands
         self._interval = settings.sweeper_interval_seconds
         self._sync_interval = settings.clock_sync_interval_seconds
         self._start_timeout = timedelta(seconds=settings.game_start_timeout_seconds)
+        self._idle_recheck = settings.sweeper_idle_recheck_seconds
+        self._next_sync: float | None = None  # None while there is nothing to keep in step
+        self._next_idle_recheck = 0.0
 
     async def run(self) -> None:
-        loop = asyncio.get_running_loop()
-        next_sync = loop.time() + self._sync_interval
         while True:
             await asyncio.sleep(self._interval)
             try:
-                await self.sweep()
-                if loop.time() >= next_sync:
-                    next_sync = loop.time() + self._sync_interval
-                    await self.broadcast_clocks()
+                await self.tick()
             except Exception:
                 logger.exception("Sweeper pass failed; will retry")
+
+    async def tick(self) -> None:
+        """One pass. With nothing to watch, it does not touch the database at all.
+
+        That lets a database which suspends when unused (common on free hosting) actually suspend.
+        """
+        now = asyncio.get_running_loop().time()
+        pending = self._commands.games_pending
+        if not pending.is_set() and now < self._next_idle_recheck:
+            return
+        self._next_idle_recheck = now + self._idle_recheck
+        # Cleared before looking, so a game created while we look sets it again.
+        pending.clear()
+        try:
+            await self.sweep()
+            if self._next_sync is None:
+                self._next_sync = now + self._sync_interval
+            elif now >= self._next_sync:
+                self._next_sync = now + self._sync_interval
+                await self.broadcast_clocks()
+            if await run_db(has_unfinished_games):
+                pending.set()
+            else:
+                self._next_sync = None
+        except Exception:
+            pending.set()
+            raise
 
     async def sweep(self) -> None:
         now = utc_now()

@@ -1,15 +1,22 @@
-"""Abuse limits, production settings and response headers."""
+"""Abuse limits, production settings, response headers and the idle sweeper."""
 
-from typing import Any
+import asyncio
+from typing import Any, cast
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 from starlette.websockets import WebSocketDisconnect
 
 from app.core.config import Settings, get_settings
 from app.core.rate_limit import SlidingWindowLimiter
 from app.main import create_app
+from app.realtime.commands import GameCommands
+from app.realtime.connections import ConnectionManager
+from app.realtime.sweeper import Sweeper
+from tests.factories import make_game, make_user
 
 SECRET = "a-perfectly-good-secret-value-0123456789"
 
@@ -112,3 +119,69 @@ def test_hosted_database_urls_select_the_installed_driver(prefix: str) -> None:
 def test_production_refuses_unsafe_settings(overrides: dict[str, Any]) -> None:
     with pytest.raises(ValidationError):
         settings(environment="production", **overrides)
+
+
+def test_idle_sweeper_leaves_the_database_alone(db_session: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    commands = GameCommands(ConnectionManager())
+    sweeper = Sweeper(commands, settings())
+    sweeps = 0
+    real_sweep = sweeper.sweep
+
+    async def counting_sweep() -> None:
+        nonlocal sweeps
+        sweeps += 1
+        await real_sweep()
+
+    monkeypatch.setattr(sweeper, "sweep", counting_sweep)
+
+    async def scenario() -> None:
+        await sweeper.tick()  # the startup look
+        assert sweeps == 1 and not commands.games_pending.is_set()
+        await sweeper.tick()
+        await sweeper.tick()
+        assert sweeps == 1
+
+        make_game(db_session, make_user(db_session, "w"), make_user(db_session, "b"))
+        commands.games_pending.set()  # what matchmaking does
+        await sweeper.tick()  # flags the long-expired game, then finds nothing left
+        assert sweeps == 2 and not commands.games_pending.is_set()
+
+    asyncio.run(scenario())
+
+
+def test_clock_updates_wait_one_interval_after_waking(monkeypatch: pytest.MonkeyPatch) -> None:
+    commands = GameCommands(ConnectionManager())
+    sweeper = Sweeper(commands, settings(clock_sync_interval_seconds=0.05))
+    broadcasts = 0
+
+    async def count_broadcast() -> None:
+        nonlocal broadcasts
+        broadcasts += 1
+
+    monkeypatch.setattr(sweeper, "broadcast_clocks", count_broadcast)
+    monkeypatch.setattr("app.realtime.sweeper.has_unfinished_games", lambda session: True)
+
+    async def scenario() -> None:
+        await sweeper.tick()
+        await sweeper.tick()
+        assert broadcasts == 0
+        await asyncio.sleep(0.06)
+        await sweeper.tick()
+        assert broadcasts == 1
+
+    asyncio.run(scenario())
+
+
+def test_matchmaking_wakes_the_sweeper(client: TestClient) -> None:
+    tokens = []
+    for name in ("alice", "bobby"):
+        email = f"{name}@example.com"
+        user = {"username": name, "email": email, "password": "long-enough-password"}
+        client.post("/api/v1/auth/register", json=user)
+        login = client.post("/api/v1/auth/login", json={"email": email, "password": user["password"]})
+        tokens.append({"Authorization": f"Bearer {login.json()['access_token']}"})
+    pending = cast(FastAPI, client.app).state.commands.games_pending
+    pending.clear()
+    for headers in tokens:
+        client.post("/api/v1/matchmaking", json={"time_control_seconds": 180}, headers=headers)
+    assert pending.is_set()

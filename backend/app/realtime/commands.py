@@ -4,6 +4,7 @@ WebSocket handlers, REST endpoints and the timeout sweeper all go through here, 
 a game reaches both players no matter how it was triggered.
 """
 
+import threading
 import uuid
 from collections.abc import Callable
 from datetime import timedelta
@@ -46,6 +47,10 @@ def read_state(session: Session, game_id: uuid.UUID) -> GameState:
 class GameCommands:
     def __init__(self, connections: ConnectionManager) -> None:
         self.connections = connections
+        # Set while there may be unfinished games, so the sweeper knows to watch the clocks.
+        # Starts set: after a restart the database may hold games in progress.
+        self.games_pending = threading.Event()
+        self.games_pending.set()
 
     async def publish(
         self, event: ServerEvent, state: GameState, extra: dict[str, Any] | None = None
