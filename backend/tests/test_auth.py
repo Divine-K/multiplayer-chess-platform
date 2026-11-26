@@ -119,3 +119,23 @@ def test_deactivated_user_token_is_rejected(
     user.is_active = False
     db_session.commit()
     assert client.get(ME, headers=auth_headers).status_code == 401
+
+
+@pytest.mark.parametrize(
+    ("path", "body"),
+    [
+        ("register", {"username": "someone", "email": "a@example.com", "password": "s3cr3t!"}),
+        ("register", {"username": "someone", "password": "a-long-secret-value"}),
+        ("register", {"username": "someone", "email": "a@example.com", "password": "a-secret", "x": 1}),
+        ("login", {"email": "not-an-email", "password": "a-long-secret-value"}),
+    ],
+    ids=["short_password", "missing_field", "extra_field", "bad_email"],
+)
+def test_validation_errors_never_repeat_the_password(
+    client: TestClient, path: str, body: dict[str, object]
+) -> None:
+    response = client.post(f"/api/v1/auth/{path}", json=body)
+
+    assert response.status_code == 422
+    assert str(body["password"]) not in response.text
+    assert all(set(problem) == {"type", "loc", "msg"} for problem in response.json()["detail"])

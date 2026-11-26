@@ -5,8 +5,10 @@ import contextlib
 from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.errors import validation_error_response
 from app.api.routes import auth, games, health, matchmaking, users
 from app.core.config import Settings, get_settings
 from app.realtime import endpoint
@@ -42,6 +44,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.state.settings = settings
     app.state.commands = GameCommands(ConnectionManager())
 
+    app.add_exception_handler(RequestValidationError, validation_error_response)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
