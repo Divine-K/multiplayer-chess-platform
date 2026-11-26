@@ -3,6 +3,14 @@
 Base path: `/api/v1`. Authenticated endpoints need `Authorization: Bearer <token>`. Interactive schema: `/docs` on a
 running server. Live gameplay uses the [WebSocket protocol](WEBSOCKET_PROTOCOL.md).
 
+## Errors
+
+Errors have a `detail` field. It is a message string, except for 422 validation failures, where it is a list of
+`{type, loc, msg}`. The rejected input is never repeated back, so a password cannot appear in an error response.
+
+`/auth/register` and `/auth/login` each allow 20 attempts per client per minute (`AUTH_RATE_LIMIT_PER_MINUTE`).
+Beyond that they return **429** with a `Retry-After` header.
+
 ## Health (no prefix, no auth)
 
 | Method | Path | Result |
@@ -14,8 +22,8 @@ running server. Live gameplay uses the [WebSocket protocol](WEBSOCKET_PROTOCOL.m
 
 | Method | Path | Auth | Success | Errors |
 | --- | --- | --- | --- | --- |
-| POST | `/auth/register` | no | 201 user | 409 taken, 422 invalid |
-| POST | `/auth/login` | no | 200 `{access_token, token_type}` | 401, 422 |
+| POST | `/auth/register` | no | 201 user | 409 taken, 422 invalid, 429 |
+| POST | `/auth/login` | no | 200 `{access_token, token_type}` | 401, 422, 429 |
 | GET | `/users/me` | yes | 200 your account | 401 |
 | GET | `/users/me/statistics` | yes | 200 `{games_played, wins, losses, draws}` | 401 |
 | GET | `/users/{username}` | yes | 200 public profile and statistics (no email) | 401, 404 |

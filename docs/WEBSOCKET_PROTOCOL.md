@@ -99,7 +99,7 @@ but must resynchronise on every event. Clients never send times, and the server 
 | 4408 | no `auth` within 10 s | reconnect |
 | 4409 | replaced by a newer connection for the same player | do **not** auto-reconnect |
 | 4410 | nothing received for 60 s | reconnect (send `ping` every 20–25 s) |
-| 4429 | more than 20 messages in a second | back off |
+| 4429 | more than 20 messages in a second, or too many sockets (100) waiting to sign in | back off |
 
 ## Disconnection policy
 

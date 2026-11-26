@@ -1,0 +1,94 @@
+# Testing
+
+## Layers
+
+| Suite | Command | What is real | Covers |
+| --- | --- | --- | --- |
+| Backend unit and integration | `cd backend && pytest` | PostgreSQL; the app in-process | rules, clock, services, locking, REST, WebSocket protocol, schema and migrations, hardening |
+| Live matches | `cd backend && pytest tests_live` | a separate API process, HTTP, WebSockets, PostgreSQL, real time | whole games between two clients |
+| Frontend | `cd frontend && npm test` | React in jsdom; the API and socket are fakes | screens, board input, socket and reducer behaviour |
+| Browser | `cd frontend && npm run test:e2e` | Google Chrome, one isolated session per player, the real stack | the user's path through the app |
+
+The two backend suites erase the `_test` database they use and must not run at the same time.
+
+## Live match suite
+
+Each match is two clients, each with its own account and socket, matched through the real queue. A separate
+`python-chess` board follows along and checks the position, move number and check status that **both** players
+receive after every move. The API's log must contain no errors at the end of the run.
+
+The suite writes `match-report.json` from the games that actually ran. Run on 26 November 2026 (71 tests passed in
+9 min 6 s):
+
+| Measure | Count |
+| --- | --- |
+| Match sessions (games created) | **82** |
+| Moves accepted by the server | 6,344 |
+| Distinct test scenarios that played a match | 36 (64 counting each parameter variant) |
+| Games played to a final state | 51 |
+| Games deliberately left unfinished once the behaviour under test had been checked | 31 |
+
+Final states of those 51 games: resignation 18, insufficient material 8, checkmate 6, fifty-move rule 6, draw
+agreement 3, never started (aborted) 3, timeout 3, stalemate 2, threefold repetition 1, timeout against insufficient
+material 1. Sixteen of the games are complete random legal games, whose endings come from the rules rather than from a
+script chosen to reach them.
+
+### Scenarios
+
+| Area | Checked |
+| --- | --- |
+| Endings | checkmate by each side, stalemate, threefold repetition, insufficient material, fifty-move rule |
+| Special moves | castling (both sides, both wings), refused through check and after the king moved; en passant by each side and after it expires; promotion to each piece, refused with no piece chosen |
+| Illegal input | impossible moves, bad squares, ignoring check, moving a pinned piece, out of turn, opponent's piece, after the game ended |
+| Draws and resignation | resign by each side over the socket and over REST; agreed, declined, crossing and invalid draw offers |
+| Races | both players resigning at once, a move racing a resignation, the same move sent five times; one result and one statistics update each |
+| Connections | each player disconnecting and returning, moves made while away, clocks running with nobody connected, a newer connection replacing the old one |
+| Persistence | a game continuing after the API process is restarted; history, paging and statistics over several games |
+| Matchmaking | 20 players joining at once form exactly 10 games; cancel, double join, join while playing, time controls kept apart; abandoned games aborted without statistics |
+| Real clocks | white and black flag falls on 3-minute games (within 178–183 s), a flag while both are away, and a draw when the opponent cannot mate |
+| Security | bad tokens, outsiders (REST and socket), foreign origin, oversized and flooding messages, forged results and clocks, CORS, duplicate accounts, errors not repeating passwords |
+
+The unstarted-game timeout is shortened to 8 s for this suite. The sign-in rate limit is raised, and is tested
+separately in `tests/test_hardening.py`.
+
+## Browser tests
+
+Six scenarios: two sessions playing to checkmate through a refresh, a disconnect and a second tab; a tampered
+client's illegal move being rejected; drag and drop, captures, promotion and an agreed draw; cancelling and resuming
+a search; and layout at 320, 375, 768 and 1366 px.
+
+On 26 November 2026 all 6 passed against the **Docker production build**, so the Content-Security-Policy was in
+force. The two-player scenarios that check for it reported no console errors.
+
+## Docker checks (run once by hand, 26 November 2026)
+
+- `docker compose up` brought all three containers to healthy; migrations ran on start; the API runs as a non-root user.
+- After `docker compose down` and `up`, the database held the same 84 users, 41 finished games and 2,181 moves.
+- The API log showed no errors.
+
+## Move latency (one local measurement)
+
+Time from one client sending a move until **both** had received the new position, on the Docker stack on a
+development Mac, with no network between client and server. Each game played 60 moves with a 150 ms pause between
+them.
+
+| Games at once | Moves measured | Median | 95th percentile | Slowest |
+| --- | --- | --- | --- | --- |
+| 1 | 60 | 21 ms | 30 ms | 98 ms |
+| 10 | 600 | 11 ms | 24 ms | 99 ms |
+| 25 | 1,500 | 10 ms | 52 ms | 264 ms |
+
+This is not a load test and says nothing about a small hosted instance.
+
+## Defect found by this testing
+
+Validation errors (HTTP 422) repeated the rejected input, so a registration or sign-in request that failed
+validation sent the password back, or the whole request body when a field was missing. Errors now contain only the
+type, location and message, with regression tests in both backend suites.
+
+## Not tested
+
+- Firefox, Safari, and physical phones or tablets.
+- A hosted deployment: HTTPS, `wss`, real network delay, cold starts and the proxy setting for rate limiting.
+- Load beyond 25 simultaneous games, long-running soak tests, or database failover.
+- Screen readers (keyboard play is tested).

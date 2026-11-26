@@ -2,15 +2,42 @@
 
 Full-stack real-time multiplayer chess platform built with FastAPI, React, TypeScript, WebSockets, and PostgreSQL.
 
-> **Status: Day 3 of 4 complete.** The app is playable locally: two people can sign up, get matched and finish a game
-> from separate browser sessions. **It is not deployed yet.** Docker, CI, deployment and the final testing and
-> security pass are Day 4. See [docs/DEVELOPMENT_LOG.md](docs/DEVELOPMENT_LOG.md).
+[![CI](https://github.com/Divine-K/multiplayer-chess-platform/actions/workflows/ci.yml/badge.svg)](https://github.com/Divine-K/multiplayer-chess-platform/actions/workflows/ci.yml)
 
-## Goals
+Players create an account, are matched with another person, and play a timed game that both see live. The interface
+is branded **Tempo**. The server is the only authority: the browser sends a move *request*, and the server checks who
+sent it, whose turn it is, whether it is legal and whether time remains before anything changes.
 
-Users register, find an opponent, play real-time chess, and review past games and statistics. The backend is the
-single source of truth for game state: the browser only sends move *intents*, and the server validates them
-before anything changes.
+> **Not deployed yet.** It runs locally, with or without Docker. Hosting is configured and documented in
+> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) but has not been performed.
+
+![A live game: legal moves, move list, clocks and a draw offer](docs/screenshots/game.png)
+
+| Dashboard | Phone |
+| --- | --- |
+| ![Dashboard with matchmaking, record and recent matches](docs/screenshots/dashboard.png) | <img src="docs/screenshots/game-phone.png" alt="The game screen on a phone" width="240"> |
+
+<details>
+<summary>Landing page</summary>
+
+![Landing page](docs/screenshots/landing.png)
+
+</details>
+
+## Features
+
+- **Complete rules, enforced on the server:** castling, en passant, promotion, check, checkmate, stalemate,
+  insufficient material, threefold repetition and the fifty-move rule.
+- **Matchmaking** for 3, 5 and 10 minute games, safe when many players join at once.
+- **Real-time play** over authenticated WebSockets, with reconnection after a refresh, dropped network or server
+  restart.
+- **Server-authoritative clocks** that keep running through disconnects and restarts, including timeout and
+  timeout-versus-insufficient-material results.
+- Resignation, draw offers, match history, and win/loss/draw records.
+- **Board:** click or drag, full keyboard play, legal-move, last-move and check highlighting, promotion picker,
+  captured pieces. Layouts for phone, tablet and desktop.
+- **Security:** Argon2id password hashing, JWT auth, sign-in rate limiting, origin-checked and rate-limited sockets,
+  and a Content-Security-Policy.
 
 ## Technology stack
 
@@ -19,29 +46,58 @@ before anything changes.
 | Frontend | React 19, TypeScript, Vite, Tailwind CSS v4, Framer Motion, Lucide, React Router |
 | Backend | Python, FastAPI, Pydantic v2, WebSockets, python-chess |
 | Database | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
-| Auth | JWT access tokens, Argon2id password hashing |
+| Auth | JWT access tokens, Argon2id |
 | Testing | Pytest, Vitest, React Testing Library, Playwright |
-| Tooling | Ruff, mypy (strict), oxlint, Git/GitHub (Docker and CI planned for Day 4) |
+| Tooling | Docker Compose, GitHub Actions, Ruff, mypy (strict), oxlint |
 
-## Repository layout
+## Architecture
 
+```mermaid
+flowchart LR
+    A[Player A<br/>React] <-- "REST + WebSocket" --> API
+    B[Player B<br/>React] <-- "REST + WebSocket" --> API
+    subgraph API["FastAPI (one process)"]
+        direction TB
+        R[Routes and socket endpoint] --> S[Services: one transaction per command]
+        W[Timeout sweeper] --> S
+        S --> C[Rules and clock<br/>pure Python]
+    end
+    S --> DB[(PostgreSQL)]
 ```
-backend/    FastAPI app (api/ routes, services/ business logic, realtime/ WebSockets,
-            chess_core/ rules and clock, models/ ORM, schemas/ API types)
-  migrations/   Alembic migrations
-  tests/        Pytest suite (runs against a real PostgreSQL database)
-frontend/   React + TypeScript app (lib/ API client, components/ UI, features/ feature modules)
-  e2e/          Playwright browser tests
-docs/       Architecture notes and the development log
+
+**Life of a move:** the socket handler validates the message and already knows the user. The service locks the game
+row, checks the seat, status, clock and turn, rebuilds the position from the stored moves, and validates the move
+with python-chess. The move, clocks, any result and both players' statistics commit in one transaction. Only then are
+both players sent the new state.
+
+Decisions worth reading about in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md):
+
+- A **row lock** protects the data; a per-game **async lock** keeps broadcast order equal to commit order.
+- The clock never ticks in the database. It stores time remaining at the start of a turn, so it survives restarts.
+- The browser has **no chess rules and makes no optimistic moves**, so its state cannot drift from the server's.
+- A PostgreSQL **advisory lock** serialises pairing, and a partial unique index forbids two unfinished games per
+  player.
+
+## Run it with Docker
+
+```bash
+cp .env.example .env
 ```
 
-## Local setup
+Set `POSTGRES_PASSWORD` (letters and digits) and `JWT_SECRET_KEY` in `.env`, then:
 
-Prerequisites: Python 3.12+, Node.js 20+, PostgreSQL 16+.
+```bash
+docker compose up --build
+```
 
-### 1. Database
+Open `http://localhost:8080`. To play against yourself, use two separate sessions, for example a normal window and a
+private window: tabs in the same window share one sign-in.
 
-Create a role and two databases (one for development, one for tests):
+## Local development
+
+Prerequisites: Python 3.12+ (developed on 3.14), Node.js 24, PostgreSQL 16.
+
+### Database
 
 ```sql
 CREATE ROLE chess WITH LOGIN PASSWORD 'choose-a-password';
@@ -49,7 +105,7 @@ CREATE DATABASE chess_dev  OWNER chess;
 CREATE DATABASE chess_test OWNER chess;
 ```
 
-### 2. Backend
+### Backend
 
 ```bash
 cd backend
@@ -58,12 +114,12 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 cp .env.example .env          # then edit DATABASE_URL and JWT_SECRET_KEY
 alembic upgrade head          # create the schema
-uvicorn app.main:app --reload # http://localhost:8000  (API docs at /docs)
+uvicorn app.main:app --reload # http://localhost:8000  (interactive API docs at /docs)
 ```
 
 Generate a secret with `python -c "import secrets; print(secrets.token_urlsafe(48))"`.
 
-### 3. Frontend
+### Frontend
 
 ```bash
 cd frontend
@@ -72,90 +128,84 @@ cp .env.example .env.local    # optional; defaults to http://localhost:8000
 npm run dev                   # http://localhost:5173
 ```
 
-Open the app at **`http://localhost:5173`** (not `127.0.0.1`): the backend's CORS allow-list is origin-exact.
+Open `http://localhost:5173`, not `127.0.0.1`: the allowed origin must match exactly.
 
 ## Environment variables
 
 | Variable | Where | Description |
 | --- | --- | --- |
-| `DATABASE_URL` | backend | SQLAlchemy URL, e.g. `postgresql+psycopg://chess:pw@localhost:5432/chess_dev`. Required. |
-| `JWT_SECRET_KEY` | backend | Token signing secret, at least 32 characters. Required. |
-| `ENVIRONMENT` | backend | `development`, `test` or `production`. Production rejects placeholder secrets. |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | backend | Access token lifetime. Default 60. |
-| `CORS_ORIGINS` | backend | JSON list of allowed browser origins. Default `["http://localhost:5173"]`. |
+| `DATABASE_URL` | backend | Required. `postgresql://…` URLs are accepted. |
+| `JWT_SECRET_KEY` | backend | Required, 32+ characters. Production rejects the placeholders. |
+| `ENVIRONMENT` | backend | `development` (default), `test` or `production`. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | backend | Default 60. |
+| `CORS_ORIGINS` | backend | JSON list of exact browser origins. Default `["http://localhost:5173"]`. |
+| `AUTH_RATE_LIMIT_PER_MINUTE` | backend | Sign-in and sign-up attempts per client. Default 20. |
+| `TRUSTED_PROXY_HOPS` | backend | Proxies in front of the API. Default 0. |
 | `MATCHMAKING_STALE_SECONDS` | backend | Queue entry expiry without a status poll. Default 15. |
 | `GAME_START_TIMEOUT_SECONDS` | backend | Abort a paired game that never starts. Default 60. |
-| `WS_IDLE_TIMEOUT_SECONDS` | backend | Close silent sockets. Default 60. Other `WS_*` limits are in `app/core/config.py`. |
-| `VITE_API_BASE_URL` | frontend | Backend origin. Default `http://localhost:8000`. |
+| `WS_IDLE_TIMEOUT_SECONDS` | backend | Close silent sockets. Default 60. Other limits are in `app/core/config.py`. |
+| `VITE_API_BASE_URL` | frontend | API origin, fixed at build time. Default `http://localhost:8000`. |
 
-Secrets live only in untracked files (`backend/.env`, `backend/.env.test`, `frontend/.env.local`). They are
-git-ignored; only `.env.example` templates are committed.
+Real values live only in untracked `.env` files; the repository holds `.env.example` templates.
 
-## Database
+## API and WebSocket events
 
-Schema changes go through Alembic migrations, never manual edits.
+- [REST API](docs/API.md): registration and sign-in, profiles, matchmaking, games and history.
+- [WebSocket protocol](docs/WEBSOCKET_PROTOCOL.md): `/ws/games/{id}`, authenticated by its first message.
 
-```bash
-alembic upgrade head                       # apply
-alembic downgrade base                     # roll everything back
-alembic revision --autogenerate -m "msg"   # create a new migration after changing models
-alembic check                              # fails if models and migrations have drifted
-```
+| Client sends | Server sends |
+| --- | --- |
+| `auth`, `move`, `resign`, `offer_draw`, `accept_draw`, `decline_draw`, `sync`, `ping` | `connected`, `game_started`, `move_accepted`, `move_rejected`, `turn_changed`, `clock_updated`, `draw_offered`, `draw_declined`, `player_connected`, `player_disconnected`, `game_finished`, `state`, `pong`, `error` |
 
-Tables: `users`, `games`, `game_participants`, `moves`, `player_statistics`, `matchmaking_queue`. Integrity rules (one player per
-color per game, unique ply numbers, non-negative counters, valid enum values) are enforced by database
-constraints, not just application code. Details in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
-
-## Backend features
-
-- Server-validated chess: castling, en passant, promotion, check, checkmate, stalemate, insufficient material,
-  threefold repetition and the fifty-move rule.
-- Matchmaking for 3, 5 and 10 minute games, safe under concurrent requests.
-- Real-time play over authenticated WebSockets, with reconnection.
-- Server-authoritative clocks that keep running through disconnects and server restarts.
-- Resignation, draw offers, match history and win/loss/draw statistics.
-
-Reference: [REST API](docs/API.md) · [WebSocket protocol](docs/WEBSOCKET_PROTOCOL.md) ·
-[Architecture](docs/ARCHITECTURE.md). Run **one** API process (see the scaling note in the protocol doc).
-
-## Using the app
-
-The interface is branded **Tempo**.
-
-- **Landing, sign-up and sign-in** with field validation, loading states and server error messages.
-- **Dashboard:** quick matchmaking (3+0, 5+0, 10+0), your win/draw/loss record, recent matches, and a link back to
-  any unfinished game. A search keeps running while you browse other pages.
-- **Board:** click or drag to move, keyboard play with arrow keys, legal-move, selection, last-move and check
-  highlighting, a promotion picker and captured pieces.
-- **Game screen:** both players, their colours and clocks, opponent connection status and record, move list, draw
-  offers, resignation and a result screen.
-- **Match history:** paginated; open a game to see its final position and move list.
-
-To play against yourself, use two *separate* sessions, for example a normal window and a private window. Two tabs in
-the same window share one sign-in.
-
-The browser holds no chess rules. It highlights the moves the server lists, sends the one you choose, and changes the
-board only when the server sends the new position.
+Database tables and constraints: [docs/DATABASE_SCHEMA.md](docs/DATABASE_SCHEMA.md).
 
 ## Testing
 
 ```bash
-# Backend: needs a *_test database; create backend/.env.test with its DATABASE_URL
-cd backend && pytest
-ruff check . && ruff format --check . && mypy app tests
+cd backend
+pytest                 # unit and integration tests, real PostgreSQL
+pytest tests_live      # full matches against a running API; about 10 minutes (real 3-minute clocks)
+ruff check . && ruff format --check . && mypy app tests tests_live
 
-# Frontend
-cd frontend && npm test && npm run lint && npm run typecheck && npm run build
-
-# Browser tests: needs Google Chrome, and the API (:8000) and `npm run dev` already running
-cd frontend && npm run test:e2e
+cd ../frontend
+npm test && npm run lint && npm run typecheck && npm run build
+npm run test:e2e       # two-player browser tests; needs Chrome and a running stack
 ```
 
-The browser tests drive the installed Google Chrome with one isolated session per player. They create throwaway
-accounts (`…@e2e-players.dev`) in whichever database the API uses, so point it at a development database.
+Both backend suites need a database whose name ends in `_test` (set in `backend/.env.test`) and **erase it**; they
+refuse to run against any other name. Do not run the two at the same time, as they share it. For repeated browser
+runs, raise `AUTH_RATE_LIMIT_PER_MINUTE`.
 
-The backend suite refuses to run unless the database name ends in `_test`, so it can never wipe development data.
+Coverage, results and what has *not* been tested: [docs/TESTING.md](docs/TESTING.md).
 
-## Roadmap
+## Deployment
 
-- **Day 4:** end-to-end testing, Docker, CI, deployment, final documentation.
+Planned on free tiers: Cloudflare Pages (web app), Render (API) and Neon (PostgreSQL). Steps, limits and a
+verification checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+
+## Repository layout
+
+```
+backend/    app/ (api, services, realtime, chess_core, models, schemas, core), migrations/,
+            tests/ (unit and integration), tests_live/ (full matches against a running API)
+frontend/   src/ (lib, components, features), e2e/ (browser tests)
+docs/       architecture, API, protocol, schema, testing, deployment, development log
+```
+
+## Known limitations
+
+- One API instance only: live connections are held in memory.
+- Tested in Google Chrome only; not in Firefox, Safari or on physical touch devices.
+- Finished games show the final position; you cannot step through earlier moves.
+- No password reset, email verification or account deletion.
+- The access token is stored in `localStorage` (see the trade-off in the architecture notes).
+- No ratings, chat, spectators or time increments.
+
+## Future improvements
+
+- Redis or PostgreSQL `LISTEN/NOTIFY` pub/sub, to run several API instances.
+- Elo or Glicko ratings and rating-aware matchmaking.
+- Move-by-move replay and PGN export.
+- Increment time controls (the clock already supports them) and rematches.
+- Password reset by email, and refresh tokens.
+- Route-level code splitting.

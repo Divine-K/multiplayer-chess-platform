@@ -1,26 +1,45 @@
 # Architecture
 
-This document describes what is **implemented through Day 3** (backend and web app) and what remains.
+How the system fits together. See also the [database schema](DATABASE_SCHEMA.md), [REST API](API.md),
+[WebSocket protocol](WEBSOCKET_PROTOCOL.md), [testing](TESTING.md) and [deployment](DEPLOYMENT.md).
 
 ## System overview
 
+```mermaid
+flowchart LR
+    subgraph Browser
+        UI[React app]
+    end
+    subgraph API["FastAPI (one process)"]
+        REST[REST routes]
+        WS[WebSocket endpoint]
+        CMD[Game commands<br/>commit, then broadcast]
+        SW[Timeout sweeper]
+        SVC[Services<br/>transactions]
+        CORE[chess_core<br/>rules and clock]
+    end
+    DB[(PostgreSQL)]
+
+    UI -- "HTTPS + JWT" --> REST
+    UI <-- "WebSocket" --> WS
+    REST --> SVC
+    REST -- resign --> CMD
+    WS --> CMD
+    SW --> CMD
+    CMD --> SVC
+    CMD -- events --> WS
+    SVC --> CORE
+    SVC --> DB
 ```
- Browser (React + TS)
-   |  REST  /api/v1/...        JWT bearer token
-   |  WS    /ws/games/{id}      authenticated socket
-   v
- FastAPI app
-   api/routes   thin HTTP layer: parse, call a service, map errors to status codes
-   services     use cases and transactions: accounts, games, matchmaking, queries
-   realtime     WebSocket endpoint, protocol, connection rooms, command layer, timeout sweeper
-   chess_core   pure domain code: rules engine and clock (no database, no HTTP)
-   models       SQLAlchemy ORM
-   schemas      Pydantic request/response types
-   core         settings, password hashing, JWT
-   |
-   v
- PostgreSQL 16  (schema managed by Alembic)
-```
+
+| Package | Contents |
+| --- | --- |
+| `api/` | thin HTTP layer: parse, call a service, map errors to status codes; rate limit and headers |
+| `services/` | use cases and transactions: accounts, games, matchmaking, queries |
+| `realtime/` | WebSocket endpoint, protocol, connection rooms, command layer, timeout sweeper |
+| `chess_core/` | pure domain code: rules engine and clock (no database, no HTTP) |
+| `models/`, `schemas/` | SQLAlchemy ORM and Pydantic types |
+| `core/` | settings, password hashing, JWT, rate limiter |
 
 ### Authority principle
 
@@ -70,7 +89,9 @@ derived from the server's `now`. This is persistable (survives restarts), cannot
 deterministic to test. A move that arrives after the flag has fallen is discarded, even if it would mate.
 Network latency is charged to the player (no lag compensation).
 
-A background sweeper (every 250 ms) flags expired games and aborts games that never started, using only database state.
+A background sweeper flags expired games and aborts games that never started, using only database state. While any
+game is unfinished it checks every 250 ms. With none, it stops querying (apart from a backstop every 15 minutes), so
+a database that suspends when idle can do so. Matchmaking wakes it, and it always looks once at startup.
 
 ### Matchmaking
 
@@ -89,27 +110,35 @@ heartbeat. A single global lock is deliberately simple; per-time-control locks a
   401 body, so the endpoint does not reveal which emails are registered.
 - **Protected routes:** `get_current_user` decodes the token and reloads the user, so deactivating an account
   invalidates its existing tokens immediately.
-- **Frontend storage:** the token is kept in `localStorage`. Trade-off: readable by injected scripts (XSS). Mitigated by
-  short token lifetime and no untrusted HTML rendering; revisited on Day 4's security review.
+- **Frontend storage:** the token is kept in `localStorage`. Trade-off: any script running on the page could read it.
+  Mitigations: a short token lifetime, no untrusted HTML rendering, and a Content-Security-Policy that allows scripts
+  only from the app's own origin. An `HttpOnly` cookie would be stronger, but with the web app and API on different
+  sites it would be a third-party cookie, which browsers increasingly block, and it would need CSRF protection.
 
-## Database schema
+## Security measures
 
-| Table | Purpose | Key constraints |
-| --- | --- | --- |
-| `users` | accounts | unique username and email; `is_active` |
-| `games` | one row per match; UUID id; persisted clocks, `version`, pending draw offer | status/result/reason checks; non-negative clocks; `finished` status requires `finished_at` |
-| `game_participants` | which user plays which color; `is_active` | unique `(game_id, color)` and `(game_id, user_id)`; one active game per user; FK cascade |
-| `moves` | accepted moves in order | unique `(game_id, ply)`; stores UCI, SAN and resulting FEN |
-| `player_statistics` | per-user win/loss/draw counters | one row per user; `wins + losses + draws <= games_played` |
-| `matchmaking_queue` | players waiting for an opponent | one entry per user |
+| Risk | Measure |
+| --- | --- |
+| Password theft from the database | Argon2id hashes only |
+| Password guessing and bulk sign-ups | per-client limit on sign-in and sign-up |
+| Passwords leaking through errors | validation errors never repeat the input |
+| Cheating | the server checks identity, seat, turn, legality and time; clients send only intents |
+| Reading or joining others' games | seat checked on every REST call and socket |
+| Cross-site WebSocket use | `Origin` allow-list, plus a token in the first message |
+| Socket abuse | message size and rate limits, auth and idle timeouts, cap on sockets awaiting auth |
+| Weak production settings | placeholder secrets and wildcard origins stop startup |
+| Browser-side injection and framing | Content-Security-Policy and related headers |
 
-Design notes:
+## Performance notes
 
-- Enums use `VARCHAR` plus `CHECK` constraints (`native_enum=False`) rather than PostgreSQL enum types, which are
-  awkward to alter in migrations.
-- Constraints have deterministic names via a SQLAlchemy naming convention, so migrations are stable.
-- Every model change must ship with a migration; `tests/test_schema.py::test_models_match_migrations` fails otherwise.
-- Statistics are denormalised counters, updated with SQL-side increments in the same transaction that finishes a game.
+- Match history uses a fixed number of queries whatever the page size.
+- Each move replays the game from its move list; the cost grows with game length and is small for chess.
+- Blocking database work runs in worker threads, so it does not stall the event loop.
+- The web app ships as one JavaScript bundle (about 154 kB gzipped).
+
+## Database
+
+Tables, constraints and indexes are described in [DATABASE_SCHEMA.md](DATABASE_SCHEMA.md).
 
 ## Frontend
 
@@ -162,4 +191,5 @@ GameSocket  ->  sessionReducer  ->  GamePage / Board
 
 - Single API instance (connection rooms are in memory); see [WEBSOCKET_PROTOCOL.md](WEBSOCKET_PROTOCOL.md).
 - A token is checked when a socket connects, not again during that socket's lifetime.
-- No rate limiting on REST endpoints yet, and no cap on unauthenticated sockets beyond the 10 s auth timeout.
+- Rate limiting covers sign-in and sign-up only. Its counts are in memory and reset on restart.
+- Request body size is not limited by the app itself; a public deployment relies on the host's limits.
