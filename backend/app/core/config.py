@@ -3,7 +3,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MIN_SECRET_KEY_LENGTH = 32
@@ -26,6 +26,11 @@ class Settings(BaseSettings):
 
     cors_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
+    # Abuse limits
+    auth_rate_limit_per_minute: int = Field(default=20, ge=1)  # per client, per auth endpoint
+    # How many proxies sit in front of the API and append to X-Forwarded-For. 0 means none.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=10)
+
     # Gameplay timing
     matchmaking_stale_seconds: float = Field(default=15, gt=0)
     game_start_timeout_seconds: float = Field(default=60, gt=0)
@@ -38,11 +43,26 @@ class Settings(BaseSettings):
     ws_send_timeout_seconds: float = Field(default=5, gt=0)
     ws_max_message_bytes: int = Field(default=4096, ge=256)
     ws_max_messages_per_second: int = Field(default=20, ge=1)
+    ws_max_unauthenticated: int = Field(default=100, ge=1)  # sockets still waiting to sign in
+
+    @field_validator("database_url")
+    @classmethod
+    def _use_installed_driver(cls, url: str) -> str:
+        """Hosted databases hand out plain postgres:// URLs; select the psycopg 3 driver for them."""
+        for prefix in ("postgres://", "postgresql://"):
+            if url.startswith(prefix):
+                return "postgresql+psycopg://" + url.removeprefix(prefix)
+        return url
 
     @model_validator(mode="after")
-    def _forbid_placeholder_secret_in_production(self) -> "Settings":
-        if self.environment == "production" and "change-me" in self.jwt_secret_key.lower():
+    def _require_safe_production_settings(self) -> "Settings":
+        if self.environment != "production":
+            return self
+        secret = self.jwt_secret_key.lower()
+        if "change-me" in secret or "replace-with" in secret or "generate-with" in secret:
             raise ValueError("JWT_SECRET_KEY must be replaced with a real secret in production.")
+        if "*" in self.cors_origins:
+            raise ValueError("CORS_ORIGINS must list exact origins in production.")
         return self
 
 

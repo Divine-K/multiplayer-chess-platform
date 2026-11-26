@@ -10,7 +10,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.errors import validation_error_response
 from app.api.routes import auth, games, health, matchmaking, users
+from app.api.security_headers import add_security_headers
 from app.core.config import Settings, get_settings
+from app.core.rate_limit import SlidingWindowLimiter
 from app.realtime import endpoint
 from app.realtime.commands import GameCommands
 from app.realtime.connections import ConnectionManager
@@ -43,12 +45,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     )
     app.state.settings = settings
     app.state.commands = GameCommands(ConnectionManager())
+    app.state.auth_limiter = SlidingWindowLimiter(settings.auth_rate_limit_per_minute, window_seconds=60)
+    app.state.unauthenticated_sockets = 0
+
+    app.middleware("http")(add_security_headers)
 
     app.add_exception_handler(RequestValidationError, validation_error_response)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
-        allow_credentials=True,
+        allow_credentials=False,  # the token travels in a header, never in a cookie
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=["Authorization", "Content-Type"],
     )

@@ -220,10 +220,18 @@ async def game_socket(websocket: WebSocket, game_id: uuid.UUID) -> None:
         return
 
     await websocket.accept()
+    app_state = websocket.app.state
+    if app_state.unauthenticated_sockets >= settings.ws_max_unauthenticated:
+        await websocket.close(code=CloseCode.RATE_LIMITED)
+        return
     connection: Connection | None = None
     color: PlayerColor | None = None
     try:
-        user_id, color, player_ids = await _authenticate(websocket, game_id, settings)
+        app_state.unauthenticated_sockets += 1
+        try:
+            user_id, color, player_ids = await _authenticate(websocket, game_id, settings)
+        finally:
+            app_state.unauthenticated_sockets -= 1
         connection = Connection(websocket, user_id, settings.ws_send_timeout_seconds)
         session = _Session(commands, connection, game_id, color)
 

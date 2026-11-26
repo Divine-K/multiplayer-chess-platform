@@ -1,12 +1,18 @@
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.api.deps import DbSession
+from app.api.rate_limits import limit_auth_attempts
 from app.core.security import create_access_token
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserPublic
 from app.services import user_service
 from app.services.errors import DuplicateAccountError, InvalidCredentialsError
 
-router = APIRouter(prefix="/auth", tags=["auth"])
+router = APIRouter(
+    prefix="/auth",
+    tags=["auth"],
+    dependencies=[Depends(limit_auth_attempts)],
+    responses={429: {"description": "Too many attempts"}},
+)
 
 
 @router.post(
