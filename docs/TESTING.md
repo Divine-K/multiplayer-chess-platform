@@ -66,6 +66,19 @@ force. The two-player scenarios that check for it reported no console errors.
 - After `docker compose down` and `up`, the database held the same 84 users, 41 finished games and 2,181 moves.
 - The API log showed no errors.
 
+## Continuous integration
+
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml) runs on every push to `main` and every pull request:
+backend lint, strict type check, tests and dependency audit; the live match suite; frontend lint, type check, tests,
+build and audit; and the browser tests against the Docker stack.
+
+[Run 45894022549](https://github.com/Divine-K/multiplayer-chess-platform/actions/runs/45894022549), for commit
+`9fcf998`, passed all four jobs. Its own match report matched the local one: 71 live tests, 82 match sessions and
+6,344 moves. The 6 browser tests passed, and `pip-audit` and `npm audit` reported no known vulnerabilities.
+
+The local live run above was made before a late change to the sweeper's clock-update timing (below). The CI run
+includes that change.
+
 ## Move latency (one local measurement)
 
 Time from one client sending a move until **both** had received the new position, on the Docker stack on a
@@ -80,11 +93,18 @@ them.
 
 This is not a load test and says nothing about a small hosted instance.
 
-## Defect found by this testing
+## Defects found while testing
 
-Validation errors (HTTP 422) repeated the rejected input, so a registration or sign-in request that failed
-validation sent the password back, or the whole request body when a field was missing. Errors now contain only the
-type, location and message, with regression tests in both backend suites.
+- **Passwords in error responses.** Validation errors (HTTP 422) repeated the rejected input, so a registration or
+  sign-in request that failed validation sent the password back, or the whole request body when a field was missing.
+  Errors now contain only the type, location and message, with regression tests in both backend suites.
+- **Intermittent test failure, introduced and fixed on the same day, before pushing.** The new idle sweeper sent its
+  first clock update as soon as it woke, which occasionally arrived between two moves. It failed one early run, and
+  again on the 21st run of a repeat loop. The 5 s delay was restored and given a test; 40 consecutive runs then
+  passed.
+
+Two other failures in the first live runs were mistakes in the tests themselves: a wrong expected error code, and
+four pairings started at once that matched each other's players.
 
 ## Not tested
 

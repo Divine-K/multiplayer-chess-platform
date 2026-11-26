@@ -288,4 +288,84 @@ GitHub Actions, deployment, README with screenshots, and the remaining documenta
 
 ## Day 4
 
-Not started.
+**Date:** 2026-11-26
+
+### Objectives
+
+Full-system testing across many match scenarios, bug fixes, performance and security review, Docker and Compose,
+GitHub Actions, deployment, README with screenshots, and the remaining documentation.
+
+### Features implemented
+
+- **Live match suite** (`backend/tests_live`): two-client games against a separate API process, checked move by move
+  against a second `python-chess` board, with a report generated from the games actually played.
+- **Security:** rate limit on sign-in and sign-up; cap on sockets waiting to authenticate; security headers; CORS
+  credentials turned off; production refuses placeholder secrets and wildcard origins; Content-Security-Policy for
+  the web app.
+- **Performance:** the timeout sweeper no longer queries the database when no game is unfinished.
+- **Deployment readiness:** Dockerfiles, Compose stack, hosted `postgres://` URLs accepted, Render blueprint and
+  deployment guide.
+- **CI:** four GitHub Actions jobs.
+- **Documentation:** README with screenshots, database schema, testing and deployment guides; API, protocol and
+  architecture updates.
+
+### Files created or modified
+
+New: `backend/tests_live/`, `backend/tests/test_hardening.py`, `backend/app/api/{errors,rate_limits,security_headers}.py`,
+`backend/app/core/rate_limit.py`, `backend/{Dockerfile,start.sh,.dockerignore}`,
+`frontend/{Dockerfile,nginx.conf,securityHeaders.ts,.dockerignore}`, `docker-compose.yml`, `render.yaml`,
+`.github/workflows/ci.yml`, `docs/{DATABASE_SCHEMA,TESTING,DEPLOYMENT}.md`, `docs/screenshots/`.
+
+Modified: backend configuration, app setup, auth and matchmaking routes, sweeper, commands and socket endpoint;
+`test_auth.py`; Vite and TypeScript configuration; environment templates, `.gitignore`, README and docs.
+
+### Tests executed
+
+| Suite | Result |
+| --- | --- |
+| Backend `pytest` | **203 passed** (also 40 consecutive runs without a failure after the sweeper fix) |
+| Backend ruff, `mypy --no-incremental` | clean |
+| Frontend Vitest | **115 passed** |
+| Frontend `tsc -b --force`, oxlint, production build | clean, succeeds |
+| Live match suite | **71 passed**: 82 match sessions, 36 scenarios, 6,344 moves |
+| Playwright against the Docker production build | **6 of 6 passed** |
+| GitHub Actions, run 45894022549 (commit `9fcf998`) | **all 4 jobs passed**, first run |
+| `npm audit`, `pip-audit` (in CI) | no known vulnerabilities |
+
+Real 3-minute flag falls, a server restart mid-game, Docker data persistence and a latency measurement are described
+in [TESTING.md](TESTING.md). Each commit from this day up to `9fcf998` was checked in a clean worktree with lint,
+type check and the backend tests.
+
+### Problems encountered
+
+- **Passwords repeated in validation errors** (found by the live suite). Fixed.
+- **Intermittent test failure** caused by the new idle sweeper's clock-update timing. Reproduced, fixed and covered
+  by a test before pushing.
+- **Two faults in new tests:** a wrong expected error code, and concurrent pairings matching each other.
+- **Secret scan false positive:** the untracked test settings reuse the public test-only default in `conftest.py`.
+  No real secret value appears in the history.
+
+### Known limitations and what was not done
+
+- **Not deployed.** The hosting accounts need the owner's sign-up and authorisation. HTTPS, `wss`, cold starts and
+  the proxy-hop setting are therefore unverified.
+- Firefox, Safari and physical touch devices are untested.
+- No load test beyond 25 simultaneous games.
+- One API instance only; rate-limit counts are in memory.
+
+### GitHub commits (Day 4, in order)
+
+1. `aed5efb` fix: stop validation errors repeating submitted passwords
+2. `3994f68` feat: harden the API for public deployment
+3. `cb38d1e` perf: stop querying the database when no game is running
+4. `97ca3a6` test: add full-match suite against a running API
+5. `4788527` chore: add Docker images and Compose setup
+6. `96efa56` ci: add GitHub Actions workflow
+7. `41ae89e` chore: add hosting configuration and deployment guide
+8. `9fcf998` docs: add schema and testing guides, screenshots and a full README
+9. `docs: record Day 4 results` (the commit that adds this entry)
+
+### Next steps
+
+Create the hosting accounts and follow [DEPLOYMENT.md](DEPLOYMENT.md), run its verification checklist, then add the
+live address to the README.
