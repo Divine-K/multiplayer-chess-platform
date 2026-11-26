@@ -83,6 +83,35 @@ def test_behind_a_proxy_each_real_client_has_its_own_limit() -> None:
     assert codes == [401, 401, 429]
 
 
+def test_edge_header_identifies_clients_when_the_proxy_chain_varies() -> None:
+    body = {"email": "nobody@example.com", "password": "wrong-password"}
+    app = create_app(settings(auth_rate_limit_per_minute=2, client_ip_header="cf-connecting-ip"))
+    with TestClient(app) as client:
+
+        def attempt(visitor: str, proxy: int) -> int:
+            headers = {"CF-Connecting-IP": visitor, "X-Forwarded-For": f"{visitor}, 10.0.0.{proxy}"}
+            return int(client.post("/api/v1/auth/login", json=body, headers=headers).status_code)
+
+        # The last proxy address changes on every request, as seen on the hosted service.
+        codes = [attempt("203.0.113.9", proxy) for proxy in range(3)]
+        someone_else = attempt("203.0.113.10", 7)
+
+    assert codes == [401, 401, 429]
+    assert someone_else == 401
+
+
+def test_edge_header_is_ignored_unless_configured() -> None:
+    body = {"email": "nobody@example.com", "password": "wrong-password"}
+    with TestClient(create_app(settings(auth_rate_limit_per_minute=1))) as client:
+        codes = [
+            client.post(
+                "/api/v1/auth/login", json=body, headers={"CF-Connecting-IP": f"198.51.100.{n}"}
+            ).status_code
+            for n in range(2)
+        ]
+    assert codes == [401, 429]
+
+
 def test_waiting_unauthenticated_sockets_are_capped() -> None:
     path = "/ws/games/00000000-0000-0000-0000-000000000000"
     with TestClient(create_app(settings(ws_max_unauthenticated=1))) as client:

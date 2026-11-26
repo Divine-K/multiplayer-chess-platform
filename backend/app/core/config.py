@@ -28,7 +28,10 @@ class Settings(BaseSettings):
 
     # Abuse limits
     auth_rate_limit_per_minute: int = Field(default=20, ge=1)  # per client, per auth endpoint
-    # How many proxies sit in front of the API and append to X-Forwarded-For. 0 means none.
+    # A header the hosting edge always overwrites with the real client address, such as
+    # cf-connecting-ip behind Cloudflare. Only set it if clients cannot supply it themselves.
+    client_ip_header: str = ""
+    # Otherwise: how many proxies sit in front of the API and append to X-Forwarded-For. 0 means none.
     trusted_proxy_hops: int = Field(default=0, ge=0, le=10)
 
     # Gameplay timing

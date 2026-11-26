@@ -140,7 +140,8 @@ Open `http://localhost:5173`, not `127.0.0.1`: the allowed origin must match exa
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | backend | Default 60. |
 | `CORS_ORIGINS` | backend | JSON list of exact browser origins. Default `["http://localhost:5173"]`. |
 | `AUTH_RATE_LIMIT_PER_MINUTE` | backend | Sign-in and sign-up attempts per client. Default 20. |
-| `TRUSTED_PROXY_HOPS` | backend | Proxies in front of the API. Default 0. |
+| `CLIENT_IP_HEADER` | backend | Header in which the hosting edge supplies the visitor's address. Default none. |
+| `TRUSTED_PROXY_HOPS` | backend | Otherwise, proxies in front of the API. Default 0. |
 | `MATCHMAKING_STALE_SECONDS` | backend | Queue entry expiry without a status poll. Default 15. |
 | `GAME_START_TIMEOUT_SECONDS` | backend | Abort a paired game that never starts. Default 60. |
 | `WS_IDLE_TIMEOUT_SECONDS` | backend | Close silent sockets. Default 60. Other limits are in `app/core/config.py`. |

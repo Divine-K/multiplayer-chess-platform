@@ -63,11 +63,20 @@ redeploy the API.
 - [ ] The socket connects over `wss://`; moves appear on both screens.
 - [ ] Refresh mid-game restores the position. Finish a game; history and statistics update.
 - [ ] A wrong origin is refused by the API.
-- [ ] **Rate limit behind the proxy.** `TRUSTED_PROXY_HOPS` is the number of proxies that append to
-      `X-Forwarded-For`; `render.yaml` assumes 1. Exceed the sign-in limit from one network, then try from a second
-      network. If the second is also blocked, the count is too low. Raise it one step at a time, and confirm that
-      sending an invented `X-Forwarded-For` header still does not get around the limit. Setting it higher than the
-      real number of proxies would allow exactly that.
+- [ ] **Rate limit behind the proxy.** Send more than 20 requests with the body `{}` to `/api/v1/auth/login` within a
+      minute. They need no password and create nothing; the later ones must return 429. While blocked, repeat with
+      an invented `X-Forwarded-For` header: still 429.
+- [ ] **Socket close reasons.** A socket that sends a bad token receives `closing` with code 4401 at once.
+
+### Identifying clients behind Render
+
+The rate limit needs the visitor's real address. `render.yaml` sets `CLIENT_IP_HEADER=cf-connecting-ip`, a header
+that Cloudflare, in front of Render, sets itself; a request that tried to supply it was refused with 403.
+
+Counting `X-Forwarded-For` entries (`TRUSTED_PROXY_HOPS`) did not work here: with 1 and with 2, the limit never
+triggered. With 1, a local test showed that a last entry which changes per request has exactly that effect. Check the
+limit on the real host after any change: a wrong setting can silently switch it off. On another host, only set
+`CLIENT_IP_HEADER` to a header that the host overwrites on every request.
 
 ## Running the whole stack with Docker
 
