@@ -8,19 +8,14 @@ Players create an account, are matched with another person, and play a timed gam
 is branded **Tempo**. The server is the only authority: the browser sends a move *request*, and the server checks who
 sent it, whose turn it is, whether it is legal and whether time remains before anything changes.
 
+[![Tempo in 20 seconds: two live boards, a rejected illegal move and checkmate](docs/media/tempo.gif)](docs/media/tempo.mp4)
+
+<sub>A 20-second animated tour built from the app's own interface components. [Open the full video with sound.](docs/media/tempo.mp4)</sub>
+
 ## [Play it live](https://multiplayer-chess-2n5.pages.dev)
 
 **https://multiplayer-chess-2n5.pages.dev** runs on free hosting, so after a quiet spell the first request can take
 about a minute while the server wakes up. To play against yourself, use a normal window and a private window.
-
-## Demo
-
-https://github.com/user-attachments/assets/9bbfdb7d-4c3b-41b4-ac3d-f6f13e4be9fa
-
-A 20-second animated walkthrough built from the app's own interface components (it is not a screen recording).
-Turn the sound on.
-
-## Screenshots
 
 ![A live game: legal moves, move list, clocks and a draw offer](docs/screenshots/game.png)
 
