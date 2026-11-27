@@ -13,6 +13,15 @@ sent it, whose turn it is, whether it is legal and whether time remains before a
 **https://multiplayer-chess-2n5.pages.dev** runs on free hosting, so after a quiet spell the first request can take
 about a minute while the server wakes up. To play against yourself, use a normal window and a private window.
 
+## Demo
+
+https://github.com/user-attachments/assets/9bbfdb7d-4c3b-41b4-ac3d-f6f13e4be9fa
+
+A 20-second animated walkthrough built from the app's own interface components (it is not a screen recording).
+Turn the sound on.
+
+## Screenshots
+
 ![A live game: legal moves, move list, clocks and a draw offer](docs/screenshots/game.png)
 
 | Dashboard | Phone |
