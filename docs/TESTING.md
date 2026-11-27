@@ -72,9 +72,9 @@ force. The two-player scenarios that check for it reported no console errors.
 backend lint, strict type check, tests and dependency audit; the live match suite; frontend lint, type check, tests,
 build and audit; and the browser tests against the Docker stack.
 
-[Run 45894022549](https://github.com/Divine-K/multiplayer-chess-platform/actions/runs/45894022549), for commit
-`9fcf998`, passed all four jobs. Its own match report matched the local one: 71 live tests, 82 match sessions and
-6,344 moves. The 6 browser tests passed, and `pip-audit` and `npm audit` reported no known vulnerabilities.
+The first run of this workflow passed all four jobs. Its own match report matched the local one: 71 live tests, 82
+match sessions and 6,344 moves. The 6 browser tests passed, and `pip-audit` and `npm audit` reported no known
+vulnerabilities. Current runs are on the repository's Actions tab.
 
 The local live run above was made before a late change to the sweeper's clock-update timing (below). The CI run
 includes that change.

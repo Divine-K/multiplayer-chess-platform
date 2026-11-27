@@ -329,7 +329,7 @@ Modified: backend configuration, app setup, auth and matchmaking routes, sweeper
 | Frontend `tsc -b --force`, oxlint, production build | clean, succeeds |
 | Live match suite | **71 passed**: 82 match sessions, 36 scenarios, 6,344 moves |
 | Playwright against the Docker production build | **6 of 6 passed** |
-| GitHub Actions, run 45894022549 (commit `9fcf998`) | **all 4 jobs passed**, first run |
+| GitHub Actions, first run (commit `9fcf998`) | **all 4 jobs passed** |
 | `npm audit`, `pip-audit` (in CI) | no known vulnerabilities |
 
 Real 3-minute flag falls, a server restart mid-game, Docker data persistence and a latency measurement are described
@@ -385,8 +385,8 @@ The owner created the Neon, Render and Cloudflare accounts and deployed:
 - **WebSocket close codes were lost**, so the browser could not tell why it was disconnected. Fixed by announcing the
   reason in a message before closing.
 
-**Tests:** 205 backend, 117 frontend, 71 live match tests and 6 Docker browser tests passed; GitHub Actions run
-45907692511 passed all four jobs. Both fixes were retested on the live site. The owner reported that the manual
+**Tests:** 205 backend, 117 frontend, 71 live match tests and 6 Docker browser tests passed; all four GitHub Actions jobs
+passed. Both fixes were retested on the live site. The owner reported that the manual
 two-player checklist passed.
 
 **Commits:** `06f075e` fix: announce the close reason before closing a game socket; `7e486d5` fix: identify clients
