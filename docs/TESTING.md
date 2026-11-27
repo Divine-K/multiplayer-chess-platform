@@ -122,7 +122,7 @@ approves the web app's origin and not a foreign one; a foreign origin is refused
 | Close codes were lost: the browser got 1006 after 20–30 s | The close frame did not arrive; which part of the hosted path loses it is unknown. The server now sends a `closing` message first and the client acts on it | In a browser: 4401 and 1009 announced in under 1 s, 4408 at 10.6 s |
 
 After the fixes: 205 backend and 117 frontend tests, 71 live match tests (82 match sessions) and 6 browser tests on
-Docker passed locally, and all GitHub jobs passed for commit `7e486d5`.
+Docker passed locally, and all GitHub jobs passed for commit `dab2325`.
 
 **Manual two-player test:** the project owner then ran a checklist on the live site and reported that all of it
 passed: matching, moves and clocks in both sessions, refresh during a game, a second tab taking over without the tabs

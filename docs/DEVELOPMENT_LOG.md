@@ -329,11 +329,11 @@ Modified: backend configuration, app setup, auth and matchmaking routes, sweeper
 | Frontend `tsc -b --force`, oxlint, production build | clean, succeeds |
 | Live match suite | **71 passed**: 82 match sessions, 36 scenarios, 6,344 moves |
 | Playwright against the Docker production build | **6 of 6 passed** |
-| GitHub Actions, first run (commit `9fcf998`) | **all 4 jobs passed** |
+| GitHub Actions, first run (commit `7ff1793`) | **all 4 jobs passed** |
 | `npm audit`, `pip-audit` (in CI) | no known vulnerabilities |
 
 Real 3-minute flag falls, a server restart mid-game, Docker data persistence and a latency measurement are described
-in [TESTING.md](TESTING.md). Each commit from this day up to `9fcf998` was checked in a clean worktree with lint,
+in [TESTING.md](TESTING.md). Each commit from this day up to `7ff1793` was checked in a clean worktree with lint,
 type check and the backend tests.
 
 ### Problems encountered
@@ -355,14 +355,14 @@ type check and the backend tests.
 
 ### GitHub commits (Day 4, in order)
 
-1. `aed5efb` fix: stop validation errors repeating submitted passwords
-2. `3994f68` feat: harden the API for public deployment
-3. `cb38d1e` perf: stop querying the database when no game is running
-4. `97ca3a6` test: add full-match suite against a running API
-5. `4788527` chore: add Docker images and Compose setup
-6. `96efa56` ci: add GitHub Actions workflow
-7. `41ae89e` chore: add hosting configuration and deployment guide
-8. `9fcf998` docs: add schema and testing guides, screenshots and a full README
+1. `6507108` fix: stop validation errors repeating submitted passwords
+2. `b6cebae` feat: harden the API for public deployment
+3. `541f9f3` perf: stop querying the database when no game is running
+4. `50dfcff` test: add full-match suite against a running API
+5. `83adaaa` chore: add Docker images and Compose setup
+6. `9d52af0` ci: add GitHub Actions workflow
+7. `a14579b` chore: add hosting configuration and deployment guide
+8. `7ff1793` docs: add schema and testing guides, screenshots and a full README
 9. `docs: record Day 4 results` (the commit that adds this entry)
 
 ### Next steps
@@ -389,7 +389,7 @@ The owner created the Neon, Render and Cloudflare accounts and deployed:
 passed. Both fixes were retested on the live site. The owner reported that the manual
 two-player checklist passed.
 
-**Commits:** `06f075e` fix: announce the close reason before closing a game socket; `7e486d5` fix: identify clients
+**Commits:** `fdd574c` fix: announce the close reason before closing a game socket; `dab2325` fix: identify clients
 by the edge header for the sign-in limit; then `docs: add the live deployment and its test results`.
 
 **Next steps:** before making the repository public, decide about the email address in the commit history, choose a
