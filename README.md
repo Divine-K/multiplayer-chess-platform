@@ -219,3 +219,7 @@ docs/       architecture, API, protocol, schema, testing, deployment, developmen
 - Increment time controls (the clock already supports them) and rematches.
 - Password reset by email, and refresh tokens.
 - Route-level code splitting.
+
+## License
+
+[MIT](LICENSE) © 2026 Divine-K (Tempo)
