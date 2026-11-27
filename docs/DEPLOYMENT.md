@@ -1,7 +1,11 @@
 # Deployment
 
-**Status: not deployed.** The configuration below is in the repository and the Docker images run locally, but the
-hosted steps have not been performed, so treat provider-specific behaviour as unverified until the checklist passes.
+**Status: live since 26 November 2026.**
+
+- Web app: https://multiplayer-chess-2n5.pages.dev
+- API: https://multiplayer-chess-api-2uro.onrender.com
+
+The results of the checks are in [TESTING.md](TESTING.md#hosted-deployment). The steps below reproduce the setup.
 
 | Part | Host | Why |
 | --- | --- | --- |

@@ -8,8 +8,10 @@ Players create an account, are matched with another person, and play a timed gam
 is branded **Tempo**. The server is the only authority: the browser sends a move *request*, and the server checks who
 sent it, whose turn it is, whether it is legal and whether time remains before anything changes.
 
-> **Not deployed yet.** It runs locally, with or without Docker. Hosting is configured and documented in
-> [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) but has not been performed.
+## [Play it live](https://multiplayer-chess-2n5.pages.dev)
+
+**https://multiplayer-chess-2n5.pages.dev** runs on free hosting, so after a quiet spell the first request can take
+about a minute while the server wakes up. To play against yourself, use a normal window and a private window.
 
 ![A live game: legal moves, move list, clocks and a draw offer](docs/screenshots/game.png)
 
@@ -181,8 +183,14 @@ Coverage, results and what has *not* been tested: [docs/TESTING.md](docs/TESTING
 
 ## Deployment
 
-Planned on free tiers: Cloudflare Pages (web app), Render (API) and Neon (PostgreSQL). Steps, limits and a
-verification checklist are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+| Part | Host |
+| --- | --- |
+| Web app | Cloudflare Pages |
+| API and WebSockets | Render ([health check](https://multiplayer-chess-api-2uro.onrender.com/health/ready)) |
+| PostgreSQL | Neon |
+
+Pushes to `main` redeploy: Render once the GitHub checks pass. Setup, free-plan limits and the verification checklist
+are in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ## Repository layout
 
@@ -196,7 +204,8 @@ docs/       architecture, API, protocol, schema, testing, deployment, developmen
 ## Known limitations
 
 - One API instance only: live connections are held in memory.
-- Tested in Google Chrome only; not in Firefox, Safari or on physical touch devices.
+- Automated browser tests run in Google Chrome only. Firefox, Safari and physical touch devices have not been
+  specifically tested.
 - Finished games show the final position; you cannot step through earlier moves.
 - No password reset, email verification or account deletion.
 - The access token is stored in `localStorage` (see the trade-off in the architecture notes).

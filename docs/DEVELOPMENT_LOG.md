@@ -369,3 +369,29 @@ type check and the backend tests.
 
 Create the hosting accounts and follow [DEPLOYMENT.md](DEPLOYMENT.md), run its verification checklist, then add the
 live address to the README.
+
+### Deployment (2026-11-26, after the entry above)
+
+The owner created the Neon, Render and Cloudflare accounts and deployed:
+[web app](https://multiplayer-chess-2n5.pages.dev) and
+[API](https://multiplayer-chess-api-2uro.onrender.com/health/ready). This replaces the "not deployed" item above.
+
+**Problems encountered, both found only on the hosted service** (details in
+[TESTING.md](TESTING.md#hosted-deployment)):
+
+- **Sign-in limit never triggered.** The `TRUSTED_PROXY_HOPS=1` value in the blueprint was an untested assumption,
+  and 2 did not work either. The deployment guide had also wrongly predicted that a low value would block everyone
+  together. Fixed by reading the address header set by the hosting edge.
+- **WebSocket close codes were lost**, so the browser could not tell why it was disconnected. Fixed by announcing the
+  reason in a message before closing.
+
+**Tests:** 205 backend, 117 frontend, 71 live match tests and 6 Docker browser tests passed; GitHub Actions run
+45907692511 passed all four jobs. Both fixes were retested on the live site. The owner reported that the manual
+two-player checklist passed.
+
+**Commits:** `06f075e` fix: announce the close reason before closing a game socket; `7e486d5` fix: identify clients
+by the edge header for the sign-in limit; then `docs: add the live deployment and its test results`.
+
+**Next steps:** before making the repository public, decide about the email address in the commit history, choose a
+license and run a full secret scan.
+

@@ -106,9 +106,33 @@ This is not a load test and says nothing about a small hosted instance.
 Two other failures in the first live runs were mistakes in the tests themselves: a wrong expected error code, and
 four pairings started at once that matched each other's players.
 
+## Hosted deployment
+
+Checked on 26 November 2026 against the live site.
+
+**Automated checks, using no accounts:** health and database readiness in production mode; `http` redirects to
+`https`; security headers on the API and web app; page addresses load directly; a protected route returns 401; the API
+approves the web app's origin and not a foreign one; a foreign origin is refused at the WebSocket handshake.
+
+**Two defects appeared only on the hosted service.** Local, CI and Docker tests had all passed.
+
+| Defect | Cause and fix | Retest on the live site |
+| --- | --- | --- |
+| The sign-in limit never triggered | Identifying visitors by counting `X-Forwarded-For` entries failed with 1 and 2. The API now reads `CF-Connecting-IP` | 20 attempts allowed, then 429. Invented `X-Forwarded-For`, `True-Client-IP` and `X-Real-IP` values stayed blocked; supplying `CF-Connecting-IP` got 403 |
+| Close codes were lost: the browser got 1006 after 20–30 s | The close frame did not arrive; which part of the hosted path loses it is unknown. The server now sends a `closing` message first and the client acts on it | In a browser: 4401 and 1009 announced in under 1 s, 4408 at 10.6 s |
+
+After the fixes: 205 backend and 117 frontend tests, 71 live match tests (82 match sessions) and 6 browser tests on
+Docker passed locally, and all GitHub jobs passed for commit `7e486d5`.
+
+**Manual two-player test:** the project owner then ran a checklist on the live site and reported that all of it
+passed: matching, moves and clocks in both sessions, refresh during a game, a second tab taking over without the tabs
+looping, disconnect and resume, finishing a game, and saved results and history. This was not automated, and the
+browser and timings were not recorded. The optional phone game was not separately reported.
+
 ## Not tested
 
-- Firefox, Safari, and physical phones or tablets.
-- A hosted deployment: HTTPS, `wss`, real network delay, cold starts and the proxy setting for rate limiting.
+- Firefox, Safari, and physical phones or tablets, specifically.
+- On the hosted site: a measured cold start or latency, and whether blocking one visitor leaves a visitor on a second
+  network unaffected (a unit test covers this with simulated headers).
 - Load beyond 25 simultaneous games, long-running soak tests, or database failover.
 - Screen readers (keyboard play is tested).
